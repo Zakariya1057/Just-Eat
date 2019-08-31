@@ -1,21 +1,23 @@
 <?php
 
-include_once 'domain/justeat.php';
-include_once 'logs/logger.php';
+include_once __DIR__.'/domain/justeat.php';
+include_once __DIR__.'/logs/logger.php';
+include_once __DIR__.'/email.php';
 
 global $logger;
 
-try {
 
+try {
+    
     $justeat = new justEat();
     $city = $justeat->city;
 
     $list = array();
 
-    $list_location = "list/$city.json";
+    $list_location = __DIR__."/list/$city.json";
     if(file_exists($list_location)){
         $logger->debug("$city List Found");
-        $list = json_decode(file_get_contents("list/$city.json"));
+        $list = json_decode(file_get_contents($list_location));
     }
     else {
         $logger->debug("$city.json");
@@ -23,10 +25,16 @@ try {
     }
 
     $new_restaurants = array();
-    $num_left = count($list);
+
+    if(!$list){
+        $num_left = 0;
+    }
+    else {
+        $num_left = count($list);
+    }
+
 
     if($num_left > 0){
-        // $new_restaurants[] = $list;
         $new_restaurants = $list;
         $logger->notice("$city List Empty");
     }
@@ -49,7 +57,7 @@ try {
         $logger->debug('New List Generated');
 
     }
-
+    
     $logger->debug('Going Through New Restaurants');
 
     foreach($new_restaurants as $restaurant){
@@ -57,9 +65,7 @@ try {
         $justeat->restaurant($restaurant);
         array_shift($new_restaurants);
 
-        print_r($new_restaurants);
-
-        $logger->notice('Complete',array('restaurant' => $restaurant));
+        $logger->notice('Complete');
         file_put_contents($list_location,json_encode($new_restaurants));
         
     }
@@ -68,8 +74,9 @@ try {
 }
 catch (Exception $e) {
     $message = $e->getMessage();
-    $logger->error('Script Error: $message');
-
+    // $logger->error("Script Error: $message");
+    $email = new email;
+    $email->send('$message');
 }
 
 
