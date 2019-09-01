@@ -27,7 +27,7 @@ try {
         
     }
 
-    $new_restaurants =  array_values(array_unique($justeat->restaurants($fullPaths)));
+    $new_restaurants =  $justeat->restaurants($fullPaths);
 
     print_r($new_restaurants);
 

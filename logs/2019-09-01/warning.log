@@ -1,0 +1,2 @@
+[2019-09-01 08:57:37] logger.CRITICAL: Query Error: DELETE from food where restaurant_id='37' [] []
+[2019-09-01 08:57:37] logger.CRITICAL: Script Failure: Error: DELETE from food where restaurant_id='37' [] []

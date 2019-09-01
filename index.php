@@ -62,21 +62,25 @@ try {
 
     foreach($new_restaurants as $restaurant){
 
-        $justeat->restaurant($restaurant);
-        array_shift($new_restaurants);
+        // if(!$justeat->exists($restaurant)){
+            $logger->debug("----------------------------------------------------");
+            $justeat->restaurant($restaurant);
+            array_shift($new_restaurants);
+    
+            $logger->notice('Complete');
+            file_put_contents($list_location,json_encode($new_restaurants));
 
-        $logger->notice('Complete');
-        file_put_contents($list_location,json_encode($new_restaurants));
-        
+        // }
+
     }
 
 
 }
 catch (Exception $e) {
     $message = $e->getMessage();
-    // $logger->error("Script Error: $message");
+    $logger->critical("Script Failure: $message");
     $email = new email;
-    $email->send('$message');
+    $email->send("$message");
 }
 
 

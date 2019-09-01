@@ -76,7 +76,7 @@ class justEat {
 
     public function restaurants($postcodes){
         
-        global $database,$output,$logger;;
+        global $database,$output,$logger;
         $database = new Database();
         $output = array();
 
@@ -105,7 +105,7 @@ class justEat {
                         $online_id = $node->attr('data-restaurant-id');
                         $url       = 'https://www.just-eat.co.uk'.$node->filter('a.c-listing-item-link')->eq(0)->attr('href');
 
-                        if(!$output[$url]){
+                        if(!array_key_exists($url,$output)){
 
                             $result = $database->query("select * from restaurant where online_id='$online_id'");
 
@@ -117,9 +117,8 @@ class justEat {
                             else {
                                 $logger->debug("Restaurant New, $url");
                                 $output[$url] =  1;
-                                return;
                             }
-                            
+
                         }
 
                         
@@ -135,7 +134,7 @@ class justEat {
 
         }
 
-        return key($output);
+        return array_keys($output);
 
     }
 
@@ -542,6 +541,21 @@ END;
 
     }
 
+    public function exists($url){
+        global $database,$logger;
+        $database = new Database();
+
+        $logger->debug("Checking If Present Already $url");
+
+        $results = $database->query("select * from restaurant where url='$url'");
+        if($results->num_rows){
+            $logger->error("Possible Issue, shouldn't exist in db?");
+            return true;
+        }
+        $logger->debug("New Insert Doesn't Exist As Expected");
+        return false;
+    }
+
     //If previous fails due to error, delete all relating to it and reset incrementer
     public function error($url){
 
@@ -550,7 +564,7 @@ END;
         $database = new Database;
         $result = $database->query("SELECT * from restaurant where url='$url'");
 
-        $logger->notice('Deleteing Error',array('query' =>"SELECT * from restaurant where url='$url'" ));
+        $logger->notice('Deleting Older Restaurant Data',array('query' =>"SELECT * from restaurant where url='$url'" ));
 
         if($result->num_rows){
             $row  = $result->fetch_assoc();
@@ -565,13 +579,13 @@ END;
                 $food_id = $subrow['id'];
                 $category_id = $subrow['category_id'];
 
-                $database->query("DELETE from sub_category where food_id => $food_id");
+                $database->query("DELETE from sub_category where food_id >= '$food_id'");
                 $database->query("ALTER TABLE sub_category AUTO_INCREMENT = 1");
 
-                $database->query("DELETE from food where restaurant_id='$restaurant_id;");
+                $database->query("DELETE from food where restaurant_id='$restaurant_id'");
                 $database->query("ALTER TABLE food AUTO_INCREMENT = 1");
 
-                $database->query("DELETE from category where id => '$category_id");
+                $database->query("DELETE from category where id >= '$category_id'");
                 $database->query("ALTER TABLE category AUTO_INCREMENT = 1");
 
             }
