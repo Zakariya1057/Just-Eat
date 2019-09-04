@@ -309,21 +309,17 @@ class justEat {
         $crawler = $client->request('GET', $url);
         $html = $crawler->html();
 
-        $logger->debug("Fetching info,$url");
+        $error = $crawler->filter('.c-search__error-text')->count();
 
-        if (sizeof($crawler->filter('.restaurantOverview ')) !== 0) {
-
-            preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)/',$url,$matches);
-            file_put_contents(__DIR__.'/../resources/restaurants/'.$matches[1]."_info.html",$html);
-
+        if($error){
+            $logger->error("$url doesn't really exist");
+            return false;
         }
 
-        //////////////////////////////////////////////////////////////////////////////////////////////////////////
+        $logger->debug("Fetching info,$url");
 
-        // $html = file_get_contents('restaurants/restaurants-caspian-grill-and-pizza-birmingham_info.html');
-        // $crawler = new Crawler($html);
-
-        //////////////////////////////////////////////////////////////////////////////////////////////////////////
+        preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)/',$url,$matches);
+        file_put_contents(__DIR__.'/../resources/restaurants/'.$matches[1]."_info.html",$html);
 
         $crawler->filter('.restaurantOverview ')->each(function(Crawler $node, $i){
 
@@ -522,12 +518,17 @@ END;
         $this->error($infoUrl);
 
         $info = $this->info($infoUrl);
-        $menu = $this->menu($menuUrl);
+        
+        if($info){
 
-        $this->insert($info);
-        $this->food($menu->categories);
+            $menu = $this->menu($menuUrl);
 
-        sleep(60);
+            $this->insert($info);
+            $this->food($menu->categories);
+    
+            sleep(60);
+
+        }
 
     }
 

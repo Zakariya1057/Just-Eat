@@ -11,7 +11,7 @@
             $mail = new PHPMailer(true);
 
             try {
-                $date = date('Y-m-d');
+                $date = date('d-m-Y');
                 //Server settings
                 $mail->SMTPDebug = 0;                                       // Enable verbose debug output
                 $mail->isSMTP();                                            // Set mailer to use SMTP

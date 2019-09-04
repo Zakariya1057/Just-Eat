@@ -10,7 +10,7 @@ foreach($tables as $table){
     $database->query("ALTER TABLE $table AUTO_INCREMENT = 1");
 }
 
-$date = date('Y-m-d');
+$date = date('d-m-Y');
 //Clear Logs
 $logsPath = __DIR__."/logs/$date";
 $logs = scandir($logsPath);

@@ -10,7 +10,7 @@ global $logger;
 $logger = new Logger('logger');
 
 //2019-08-26
-$date = date('Y-m-d');
+$date = date('d-m-Y');
 
 if(!file_exists(__DIR__."/$date")){
     mkdir(__DIR__."/$date");
