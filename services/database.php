@@ -1,33 +1,34 @@
 <?php
 
     require_once __DIR__.'/../config/config.php';
-    require_once __DIR__.'/../services/logger.php';
+    require_once __DIR__.'/logger.php';
 
     class Database {
 
         public $connection;
     
         public function __construct(){
-            global $logger;
+            global $logger,$config;
+
+            if($this->connection){
+                return $this->connection;
+            }
 
             // $config = new config;
-            print_r($config);
-            return;
-            // if($config->environment == 'live'){
-
-            // }
-            // else {
-
-            // }
+            if($config->database->environment == 'live'){
+                $database_config = $config->database->live;
+            }
+            else {
+                $database_config = $config->database->dev;
+            }
 
             $this->connection = 'null';
-            $this->connection = new mysqli($config->dbhost, $config->dbuser, $config->dbpass, $config->dbname);
+            $this->connection = new mysqli($database_config->host, $database_config->user, $database_config->pass, $database_config->name);
             if ($this->connection->connect_error){
-                $logger->critical('Failed To Connect To Database');
+                $logger->critical('Failed To Connect To Database', (array) $database_config);
                 die("Failed to connect to database");
             } 
             else {
-                $logger->debug('Successfully Connected To Database');
                 return $this->connection;
             }
             
@@ -44,7 +45,7 @@
                 return $results;
             }
 
-            $logger->critical('Query Error: '.$sql);
+            $logger->critical('MYSQL ERROR:'.mysqli_error($this->connection), array('sql' => $sql));
             throw new Exception("Error: $sql",404);  
 
         }
