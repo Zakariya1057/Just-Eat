@@ -2,3 +2,4 @@ resources
 logs
 list
 vendor
+dev/*/
