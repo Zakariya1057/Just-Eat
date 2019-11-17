@@ -1,6 +1,6 @@
 <?php
 
-require_once  __DIR__.'/database/database.php';
+require_once __DIR__.'/../services/database.php';
 
 $database = new Database;
 
@@ -12,7 +12,7 @@ foreach($tables as $table){
 
 $date = date('d-m-Y');
 //Clear Logs
-$logsPath = __DIR__."/logs/$date";
+$logsPath = __DIR__."/../logs/";
 $logs = scandir($logsPath);
 
 foreach($logs as $log){
