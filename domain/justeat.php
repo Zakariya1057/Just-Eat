@@ -739,11 +739,6 @@ END;
         $city           = $restaurant->city;
 
         $logo  = "https://d30v2pzvrfyzpo.cloudfront.net/uk/images/restaurants/$online_id.gif";
-        
-        $saving_logo = __DIR__."/../resources/$config->city/logos/$online_id.gif";
-        file_put_contents($saving_logo, fopen($logo, 'r'));
-
-        $logger->debug("Saving Logo For $name at $saving_logo");
 
         $logger->debug('Hygiene Rating: '. $hygiene_rating);
 
@@ -751,6 +746,12 @@ END;
         values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating)");
 
         $restaurant_id =  $database->connection->insert_id;
+	
+        $saving_logo = __DIR__."/../resources/$config->city/logos/$restaurant_id.gif";
+        file_put_contents($saving_logo, fopen($logo, 'r'));
+
+	$logger->debug("Saving Logo For $name at $saving_logo");
+
 
         $logger->debug("Successfully Inserted New Restaurant, $name",array('id' => $restaurant_id,'url' => $url));
 
