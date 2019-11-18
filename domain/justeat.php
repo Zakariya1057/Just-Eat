@@ -420,6 +420,33 @@ class justEat {
         if($information){
             // print_r($information);
             $restaurant->name = shorten($information->name);
+
+            if($information->address){
+                $restaurant->address1 = $information->address->streetAddress;
+                $restaurant->address2 = '';
+                $restaurant->address3 = '';
+                $restaurant->city = shorten($information->address->addressLocality);
+                $restaurant->address_country = shorten($information->address->addressCountry);
+                $restaurant->postcode = $information->address->postalCode;
+
+                $restaurant->country = $config->country;
+                $restaurant->county  = $config->county;
+            }
+
+            preg_match('/(.+?)\s-\s[A-Z].+/i' ,$restaurant->name,$matches1);
+            preg_match('/(^.+?)\s?\(.+\)/i'                ,$restaurant->name,$matches2);
+            preg_match("/^(.+)\\s$restaurant->city/i" ,$restaurant->name,$matches3);
+
+            if($matches1){
+                $restaurant->name = $matches1[1];
+            }
+            elseif($matches2){
+                $restaurant->name = $matches2[1];
+            }
+            elseif($matches3){
+                $restaurant->name = $matches3[1];
+            }
+
             $online_id = $information->trId;
             $restaurant->online_id   = $online_id;
             $rating = 'NULL';
@@ -456,19 +483,6 @@ class justEat {
 
             $restaurant->location = $information->geo;
             $restaurant->categories = str_replace('|',', ',$information->cuisines);
-            
-
-            if($information->address){
-                $restaurant->address1 = $information->address->streetAddress;
-                $restaurant->address2 = '';
-                $restaurant->address3 = '';
-                $restaurant->city = shorten($information->address->addressLocality);
-                $restaurant->address_country = shorten($information->address->addressCountr)y;
-                $restaurant->postcode = $information->address->postalCode;
-
-                $restaurant->country = 'United Kingdom';
-                $restaurant->county  = 'West Midlands';
-            }
 
             $opening_hours = array();
 
@@ -498,6 +512,9 @@ class justEat {
 
             $restaurant->hours = json_encode($opening_hours);
 
+        }
+        else {
+            die('No Json Information Found');
         }
 
     return $restaurant;
@@ -774,10 +791,9 @@ END;
         $config = $this->config;
         $city = $config->city;
 	
-	if($this->exists($url) ){
-		$logger->warning('Restaurant Already Exists',array('url' => $url));
-		return;
-	}
+        if( $this->exists($url) ){
+            return $logger->warning('Skipping Restaurant, Already Exists In Database',array('url' => $url));
+        }
 
         // if(!$config->development){
 
