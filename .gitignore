@@ -4,5 +4,8 @@ logs
 list/*
 !list/.gitkeep
 
+failed/*
+!failed/.gitkeep
+
 vendor
 dev/*/
