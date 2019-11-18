@@ -419,7 +419,7 @@ class justEat {
         $restaurant->url = $information->menuurl;
         if($information){
             // print_r($information);
-            $restaurant->name = $information->name;
+            $restaurant->name = shorten($information->name);
             $online_id = $information->trId;
             $restaurant->online_id   = $online_id;
             $rating = 'NULL';
@@ -462,8 +462,8 @@ class justEat {
                 $restaurant->address1 = $information->address->streetAddress;
                 $restaurant->address2 = '';
                 $restaurant->address3 = '';
-                $restaurant->city = $information->address->addressLocality;
-                $restaurant->address_country = $information->address->addressCountry;
+                $restaurant->city = shorten($information->address->addressLocality);
+                $restaurant->address_country = shorten($information->address->addressCountr)y;
                 $restaurant->postcode = $information->address->postalCode;
 
                 $restaurant->country = 'United Kingdom';
@@ -773,6 +773,11 @@ END;
         $logger->debug($url);
         $config = $this->config;
         $city = $config->city;
+	
+	if($this->exists($url) ){
+		$logger->warning('Restaurant Already Exists',array('url' => $url));
+		return;
+	}
 
         // if(!$config->development){
 
@@ -825,10 +830,10 @@ END;
 
         $results = $database->query("select * from restaurant where url='$url'");
         if($results->num_rows){
-            $logger->error("Possible Issue, shouldn't exist in db?");
+            $logger->error("Duplicate Restaurant");
             return true;
         }
-        $logger->debug("New Insert Doesn't Exist As Expected");
+        $logger->debug("New Restaurant");
         return false;
     }
 
