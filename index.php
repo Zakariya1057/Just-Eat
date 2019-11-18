@@ -58,7 +58,7 @@ try {
     
         $postcode_list = __DIR__."/list/$city.json";
 
-        $error_list = __DIR__."/list/failed.json";
+        $error_list = __DIR__."/failed/failed.json";
         if(file_exists($error_list)){
             $error_restaurant = json_decode( file_get_contents($error_list) );
 
@@ -69,7 +69,7 @@ try {
 
             file_put_contents($error_list,'[]');
         }
-
+        
         $search_new = true;
         if(file_exists($postcode_list)){
             $logger->debug("$city List Found");
@@ -86,13 +86,13 @@ try {
         if($search_new){
             $logger->debug("Creating New List $city.json");
 
-              $postcodes = $site->postcodes($target_url,$city);
-//            $postcodes = array(
-//                'WS9' => [
-//                    'url' => 'https://www.just-eat.co.uk/area/ws9-aldridge',
-//                    'file'  => 'D:\Ampps\www\justeat\resources\Birmingham\postcodes\B1.html'
-//                ]
-//            );
+            $postcodes = $site->postcodes($target_url,$city);
+        //    $postcodes = array(
+        //        'WS9' => [
+        //            'url' => 'https://www.just-eat.co.uk/area/ws9-aldridge',
+        //            'file'  => 'D:\Ampps\www\justeat\resources\Birmingham\postcodes\WS9.html'
+        //        ]
+        //    );
 
             $new_restaurants = $site->restaurants($postcodes);
 
@@ -131,8 +131,8 @@ try {
 }
 catch (Exception $e) {
     $message = $e->getMessage();
-    send_message("Script Error $message", (array)$current_restaurant);
-    file_put_contents(__DIR__.'/list/failed.json',json_encode( [$current_restaurant] ));
+    send_message("Script Error: $message", (array)$current_restaurant);
+    file_put_contents(__DIR__.'/failed/failed.json',json_encode( [$current_restaurant] ));
     $logger->critical("Script Failure: $message",(array)$current_restaurant);
     send_email("ERROR: $message");
 }

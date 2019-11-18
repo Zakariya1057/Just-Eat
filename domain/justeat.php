@@ -160,17 +160,17 @@ class justEat {
             $logger->debug("Crawling Postcode $postcode");
 
             $file = $data['file'];
-            
-            if(!is_file($file)){
-                $logger->debug('Not A Postcode File',$data);
-                return;
-            }
 
             // $file = __DIR__."resources/postcodes/$postcode";
             /////////////////////////////////////
 
 
             if (file_exists($file)) {
+
+                if(!is_file($file)){
+                    $logger->debug('Not A Postcode File',$data);
+                    return;
+                }
 
                 $html = file_get_contents($file);
 
@@ -210,7 +210,6 @@ class justEat {
                 });
 
             }
-
             else {
                 $logger->error("Postcode File Not Found: $file",$data);
             }
@@ -787,7 +786,7 @@ END;
 
         global $logger,$config;
 
-        $logger->debug($url);
+        $logger->debug("Restaurant URL: $url");
         $config = $this->config;
         $city = $config->city;
 	
@@ -797,7 +796,6 @@ END;
 
         // if(!$config->development){
 
-            $logger->debug("Fetching menu for, $url");
             $client = new Client();
             $crawler = $client->request('GET', $url);
             $html = $crawler->html();

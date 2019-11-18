@@ -26,7 +26,7 @@
             $this->connection = new mysqli($database_config->host, $database_config->user, $database_config->pass, $database_config->name);
             if ($this->connection->connect_error){
                 $logger->critical('Failed To Connect To Database', (array) $database_config);
-                die("Failed to connect to database");
+                throw new Exception("Failed to connect to database");
             } 
             else {
                 return $this->connection;

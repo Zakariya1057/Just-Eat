@@ -28,7 +28,7 @@ function send_message($content){
     $status = $response->getStatusCode();
 
     if($status == 201){
-        $logger->debug("FlowDock Message Sent: $content");
+        $logger->debug("FlowDock Message Successfully Sent");
     }
     else {
         $logger->error("Failed To Send Flowdock Message");
