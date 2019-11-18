@@ -1,5 +1,0 @@
-[2019-09-02 11:13:21] logger.ERROR: https://www.just-eat.co.uk/restaurants-hungry-bitez-new-hall-green-b28 doesn't really exist [] []
-[2019-09-02 11:18:45] logger.CRITICAL: Query Error: INSERT into sub_category(name,price,food_id) values('With 2 x Corn on the Cob, 2 x Large Fries &amp; 1 x Pepe&#039;s Side Salad','15.99','45796') [] []
-[2019-09-02 11:18:45] logger.CRITICAL: Script Failure: Error: INSERT into sub_category(name,price,food_id) values('With 2 x Corn on the Cob, 2 x Large Fries &amp; 1 x Pepe&#039;s Side Salad','15.99','45796') [] []
-[2019-09-02 16:23:35] logger.ERROR: https://www.just-eat.co.uk/restaurants-broadway2 doesn't really exist [] []
-[2019-09-02 17:35:20] logger.ERROR: https://www.just-eat.co.uk/restaurants-chunky-chick-inn-star-city-birmingham doesn't really exist [] []

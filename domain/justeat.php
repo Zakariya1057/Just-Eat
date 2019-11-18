@@ -1,76 +1,149 @@
 <?php
 
-require_once  __DIR__.'/../database/database.php';
+require_once  __DIR__.'/../services/database.php';
 require_once  __DIR__.'/../vendor/autoload.php';
 require_once  __DIR__.'/../data/data.php';
-require_once  __DIR__.'/../config/config.php';
-require_once  __DIR__.'/../logs/logger.php';
+require_once  __DIR__.'/../services/logger.php';
+require_once  __DIR__.'/../services/strings.php';
+require_once  __DIR__.'/../services/places.php';
 
-// require_once __DIR__.DIRECTORY_SEPARATOR.'..'.DIRECTORY_SEPARATOR.'..'.DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR.'autoload.php';
-// require_once __DIR__.DIRECTORY_SEPARATOR.'..'.DIRECTORY_SEPARATOR.'database'.DIRECTORY_SEPARATOR.'database.php';
-
-// require_once __DIR__.DIRECTORY_SEPARATOR.'..'.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'data.php';
-// require_once __DIR__.DIRECTORY_SEPARATOR.'..'.DIRECTORY_SEPARATOR.'config'.DIRECTORY_SEPARATOR.'config.php';
-// require_once __DIR__.DIRECTORY_SEPARATOR.'..'.DIRECTORY_SEPARATOR.'logs'.DIRECTORY_SEPARATOR.'logger.php';
 
 use Symfony\Component\DomCrawler\Crawler;
 use Goutte\Client;
+use \Symfony\Component\HttpClient\HttpClient;
 
 class justEat {
     
     public $restaurant_id;
-    public $user_id = 0;
-
-    public $city = 'Birmingham';
-    public $postcode_area = 'B';
 
     public $connection;
+    public $config;
+    public $development;
+
+    function __construct($config) {
+        $this->config = $config;
+        $this->development = $config->development;
+    }
 
     //Get All Restaurant PostCodes For Given City
-    public function postcodes(){
+    public function postcodes($url,$city){
 
-        global $logger;
+        global $logger,$output,$location,$config,$client,$development,$sleeping_time;
+
         $client = new Client();
+
+        $config = $this->config;
 
         $output = array();
 
-        $city = $this->city;
-        $postcode_area = $this->postcode_area;
+        $location = __DIR__."/../resources/$city/postcodes";
 
-        for ($i = 1; $i <= 99;$i++){
+        if (!file_exists($location)) {
+            mkdir($location);
+        }
+        else {
 
-            $url = "https://www.just-eat.co.uk/area/$postcode_area$i-$city";
-    
-            $crawler = $client->request('GET', $url );
-            
-            $restaurant = $crawler->filter('section.c-listing-item');
-    
-            if(sizeof($restaurant) !== 0){
+            foreach(scandir($location) as $file){
                 
-                $logger->debug("PostCode Download $url Found");
+                $file = $location."/".$file;
 
-                $path = __DIR__."/../resources/postcodes/$postcode_area$i-$city.html";
-                $output[] = $path;
-                file_put_contents($path,$crawler->html());
-    
-            }
-            else {
-                $logger->debug("PostCode $url, no restaurants found");
-            }
+                //Make sure that this is a file and not a directory.
+                if(is_file($file)){
+                    //Use the unlink function to delete the file.
+                    unlink($file);
+                }
 
-            sleep(10);
+            }
 
         }
+        
+        $crawler = $client->request('GET', $url );
+
+        $development = $this->development;
+        $sleeping_time = $config->waiting_time->postcode;
+
+        $crawler->filter('li.grouped-link-list__link-item a')->each(function(Crawler $node, $i){
+            global $output,$location,$logger,$sleeping_time,$client,$development;
+
+            $postcode_url = $node->attr('href');
+            $postcode_name =  shorten( preg_replace('/.+,/','',$node->html()));
+            
+            $postcode_saving_location = $location."/$postcode_name.html";
+
+            $postcode_info  = array(
+                'name' => $postcode_name,
+                'url' => $postcode_url
+            );
+            
+            //////////////////////////////////////////////////////////////////////////////
+
+            if(!$development){
+                
+                $crawler = $client->request('GET', $postcode_url );
+                
+                $logger->debug('Download PostCode',$postcode_info);
+
+                $restaurant = $crawler->filter('section.c-listing-item');
+        
+                if(sizeof($restaurant) == 0){
+                    $logger->debug("No Restaurants For Postcode",$postcode_info);
+                    return;
+                }
+                
+                $logger->debug('Restaurants Found For PostCode');
+
+                $content = $crawler->html();
+
+                sleep($sleeping_time);
+                
+            }
+            else {
+                $content = $postcode_url;
+            }
+
+            //////////////////////////////////////////////////////////////////////////////
+
+            $logger->debug("Saving New Postcode File $postcode_name.html");
+
+            file_put_contents($postcode_saving_location,$content);
+            
+            $output[$postcode_name] = array(
+                'url' => $postcode_url,
+                'file' => $postcode_saving_location
+            );
+
+        });
+
+        // print_r($output);
+        // $city = $this->city;
+        // $postcode_area = $this->postcode_area;
+
+        // for ($i = 1; $i <= 99;$i++){
+
+        //     $url = "https://www.just-eat.co.uk/area/$postcode_area$i-$city";
+    
+        //     $crawler = $client->request('GET', $url );
+            
+        //     $restaurant = $crawler->filter('section.c-listing-item');
+    
+        //     if(sizeof($restaurant) !== 0){
+                
+        //         $logger->debug("PostCode Download $url Found");
+
+        //         $path = __DIR__."/../resources/postcodes/$postcode_area$i-$city.html";
+        //         $output[] = $path;
+        //         file_put_contents($path,$crawler->html());
+    
+        //     }
+        //     else {
+        //         $logger->debug("PostCode $url, no restaurants found");
+        //     }
+
+        //     sleep(10);
+
+        // }
 
         return $output;
-
-    }
-
-    public function shorten($string){
-
-        $string = str_replace('<br><br>','<br>',$string);
-        $output =  trim(preg_replace("/\s+/", " ", str_replace('<br>','\n',$string)));
-        return htmlentities(html_entity_decode($output),ENT_QUOTES);
 
     }
 
@@ -81,55 +154,64 @@ class justEat {
         $output = array();
 
         // print_r($postcodes);
-        foreach($postcodes as $postcode){
+        foreach($postcodes as $postcode => $data){
 
-            preg_match('/^\.+$/', $postcode, $matches);
+            $logger->debug("Crawling Postcode $postcode");
 
-            if(!$matches){
+            $file = $data['file'];
+            
+            if(!is_file($file)){
+                $logger->debug('Not A Postcode File',$data);
+                return;
+            }
 
-                // $file = __DIR__."resources/postcodes/$postcode";
-                /////////////////////////////////////
-                $file = $postcode;
+            // $file = __DIR__."resources/postcodes/$postcode";
+            /////////////////////////////////////
 
-                if (file_exists($file)) {
-                    // echo $file."\n";
 
-                    $html = file_get_contents($file);
+            if (file_exists($file)) {
 
-                    $crawler = new Crawler($html);
+                $html = file_get_contents($file);
 
-                    $crawler->filter('section[data-restaurant-id]')->each(function(Crawler $node, $i){
+                $crawler = new Crawler($html);
 
-                        global $database,$output,$logger;
+                $crawler->filter('section[data-restaurant-id]')->each(function(Crawler $node, $i){
+                    global $database,$output,$logger;
 
-                        $online_id = $node->attr('data-restaurant-id');
-                        $url       = 'https://www.just-eat.co.uk'.$node->filter('a.c-listing-item-link')->eq(0)->attr('href');
+                    preg_match('/halal/i',$node->filter('p[itemprop]')->eq(0)->attr('data-cuisine-names'),$matches);
+                    $restaurant_name = $node->filter('h3[data-test-id].c-listing-item-title')->eq(0)->text();
+                    
+                    if(!$matches){
+                        $logger->debug("Restaurant Not Halal Skipping, $restaurant_name");
+                        return;
+                    }
 
-                        if(!array_key_exists($url,$output)){
+                    $online_id = $node->attr('data-restaurant-id');
+                    $url       = 'https://www.just-eat.co.uk'.$node->filter('a.c-listing-item-link')->eq(0)->attr('href');
 
-                            $result = $database->query("select * from restaurant where online_id='$online_id'");
+                    if(!array_key_exists($url,$output)){
 
-                            if($result->num_rows){
-                                $logger->debug("Restaurant Exists, $url");
-                                //Update or Skip
-                                // echo "Found";
-                            }
-                            else {
-                                $logger->debug("Restaurant New, $url");
-                                $output[$url] =  1;
-                            }
+                        $result = $database->query("select * from restaurant where online_id='$online_id'");
 
+                        if($result->num_rows){
+                            $logger->debug("Restaurant Already Exists $restaurant_name Skipping, $url");
+                            //Update or Skip
+                            // echo "Found";
+                        }
+                        else {
+                            $logger->debug("New Halal Restaurant $restaurant_name, $url");
+                            $output[$url] =  1;
                         }
 
-                        
-                    });
+                    }
 
-                }
+                    
+                });
 
-                else {
-                    $logger->error("Postcode passed not found",array('postcode' => $postcode));
-                }
+            }
 
+            else {
+                $logger->error("Postcode File Not Found: $file",$data);
             }
 
         }
@@ -138,18 +220,16 @@ class justEat {
 
     }
 
-    public function menu($url) {
+    public function menu($file) {
 
         global $restaurant,$categories,$logger;
         $restaurant = new data();
 
-        $logger->debug("Fetching menu for, $url");
-        $client = new Client();
-        $crawler = $client->request('GET', $url);
-        $html = $crawler->html();
+        $html = file_get_contents($file);
+        $crawler = new Crawler($html);
 
-        preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/',$url,$matches);
-        file_put_contents(__DIR__.'/../resources/restaurants/'.$matches[1]."_menu.html",$html);
+        // preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/',$url,$matches);
+        // file_put_contents(__DIR__.'/../resources/restaurants/'.$matches[1]."_menu.html",$html);
 
         //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -169,16 +249,16 @@ class justEat {
 
             $node->filter('h3')->each(function(Crawler $node, $i){
                 global $category,$logger;
-                $category_name  = $this->shorten($node->text());
+                $category_name  = shorten($node->html());
                 $category->name = $category_name;
-                $logger->debug("Category: $category_name");
+                // $logger->debug("Category: $category_name");
             });
             
             if ($node->filter('.categoryDescription')->count() !== 0) {
                 
                 $node->filter('.categoryDescription')->each(function(Crawler $node, $i){
                     global $category;
-                    $category->description = $this->shorten($node->html());
+                    $category->description = shorten($node->html(),false);
                 });
 
             } else {
@@ -207,14 +287,14 @@ class justEat {
                             $node->filter('.name')->each(function(Crawler $node, $i)
                             {
                                 global $food;
-                                $food->name = $this->shorten($node->text());
+                                $food->name = shorten($node->html());
                             });
                             
                             if ($node->filter('.description')->count() !== 0) {
                                 $node->filter('.description')->each(function(Crawler $node, $i)
                                 {
                                     global $food;
-                                    $food->description = $this->shorten($node->html());
+                                    $food->description = shorten($node->html(),false);
                                 });
                             } else {
                                 global $food;
@@ -232,13 +312,13 @@ class justEat {
                             $node->filter('.synonymName')->each(function(Crawler $node, $i)
                             {
                                 global $subfood;
-                                $subfood->name = $this->shorten($node->text());
+                                $subfood->name = shorten($node->html());
                             });
                             
                             $node->filter('.price')->each(function(Crawler $node, $i)
                             {
                                 global $subfood;
-                                $subfood->price = $this->shorten(str_replace('£', '', $node->text()));
+                                $subfood->price = shorten(str_replace('£', '', $node->html()));
                             });
 
                             $food->options[] = $subfood;
@@ -261,13 +341,13 @@ class justEat {
                             $node->filter('.name')->each(function(Crawler $node, $i)
                             {
                                 global $food;
-                                $food->name = $this->shorten(($node->text()));
+                                $food->name = shorten(($node->html()));
                             });
                             
                             if ($node->filter('.description')->count() !== 0) {
                                 $node->filter('.description')->each(function(Crawler $node, $i){
                                     global $food;
-                                    $food->description = $this->shorten($node->html());
+                                    $food->description = shorten($node->html());
                                 });
                             } else {
                                 global $food;
@@ -279,7 +359,7 @@ class justEat {
                         
                         $node->filter('.price')->each(function(Crawler $node, $i){
                             global $food;
-                            $food->price = $this->shorten(str_replace('£', '', $node->text()));
+                            $food->price = shorten(str_replace('£', '', $node->html()));
                         });
                         
                         $category->foods[] = $food;
@@ -299,15 +379,16 @@ class justEat {
         return $restaurant;
     }
 
-    public function info($url){
+    public function page_info($url){
 
-        global $restaurant,$logger;
-
+        global $restaurant,$logger,$config,$information;
+        $config = $this->config;
+        
         $restaurant = new data();
-        $restaurant->url = $url;
-        $client = new Client();
-        $crawler = $client->request('GET', $url);
-        $html = $crawler->html();
+
+        $crawler = new Crawler( file_get_contents($url));
+  
+        $restaurant->file = $url;
 
         $error = $crawler->filter('.c-search__error-text')->count();
 
@@ -318,8 +399,162 @@ class justEat {
 
         $logger->debug("Fetching info,$url");
 
-        preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)/',$url,$matches);
-        file_put_contents(__DIR__.'/../resources/restaurants/'.$matches[1]."_info.html",$html);
+        $crawler->filter('script')->each(function(Crawler $node, $i){
+            global $information;
+            $script = $node->html();
+            preg_match('/^\s*dataLayer\.push\((.+)\);/',$script,$matches);
+
+            if($matches){
+                $decoded = json_decode($matches[1]);
+
+                if($decoded->trData){
+                    $information = $decoded->trData;
+                }
+
+            }
+            
+        });
+        
+        $restaurant->url = $information->menuurl;
+        if($information){
+            // print_r($information);
+            $restaurant->name = $information->name;
+            $online_id = $information->trId;
+            $restaurant->online_id   = $online_id;
+            $rating = 'NULL';
+
+            if ($online_id) {
+
+
+                if ($config->development) {
+                    $rating = rand(1, 5);
+                } else {
+                    
+                    $client = HttpClient::create();
+
+                    $response = $client->request('GET', "https://hygieneratingscdn.je-apis.com/api/uk/restaurants/$online_id");
+
+                    $statusCode = $response->getStatusCode();
+
+                    if ($statusCode == 200) {
+                        $content = json_decode($response->getContent());
+
+                        if (is_numeric($content->rating)) {
+                            $rating = $content->rating;
+                        }
+
+                    }
+                    else {
+                        $logger->error('No Hygiene Rating Found For $restaurant->name', array('url' => $restaurant->url));
+                    }
+                }
+
+            }
+            
+            $restaurant->hygiene_rating = $rating;
+
+            $restaurant->location = $information->geo;
+            $restaurant->categories = str_replace('|',', ',$information->cuisines);
+            
+
+            if($information->address){
+                $restaurant->address1 = $information->address->streetAddress;
+                $restaurant->address2 = '';
+                $restaurant->address3 = '';
+                $restaurant->city = $information->address->addressLocality;
+                $restaurant->address_country = $information->address->addressCountry;
+                $restaurant->postcode = $information->address->postalCode;
+
+                $restaurant->country = 'United Kingdom';
+                $restaurant->county  = 'West Midlands';
+            }
+
+            $opening_hours = array();
+
+            $days = array('Monday','Tueday','Wednesday','Thurday','Friday','Saturday','Sunday');
+
+            // print_r($information->openingHours);
+            for($i =0; $i < count($information->openingHours);$i++){
+
+                $weekday = str_replace('"','',$information->openingHours[$i]);
+                preg_match('/^(\w+)\W+(\d+:\d+)\W+(\d+:\d+)/',$weekday,$matches);
+                if(!$matches){
+                    $logger->error('Opening Hours, Weekdays Format Not Recognised',$information->openingHours);
+                }
+                
+                $day = $days[$i];
+                // return $matches;
+                $open = $matches[2];
+                $close =$matches[3];
+
+                $open_hours = new data();
+                $open_hours->day = $day;
+                $open_hours->open = $open;
+                $open_hours->close = $close;
+
+                $opening_hours[] = $open_hours;
+            }
+
+            $restaurant->hours = json_encode($opening_hours);
+
+        }
+
+    return $restaurant;
+
+}
+    
+    //Not In Use Anymore
+    public function info($url){
+
+        global $restaurant,$logger,$config,$information;
+        $config = $this->config;
+        
+        $restaurant = new data();
+
+        if($config->development){
+            $crawler = new Crawler( file_get_contents($url));
+        }
+        else {
+            die('Live');
+
+            $client = new Client();
+            $crawler = $client->request('GET', $url);
+            $html = $crawler->html();
+            
+        }   
+
+        $restaurant->url = $url;
+
+        $error = $crawler->filter('.c-search__error-text')->count();
+
+        if($error){
+            $logger->error("$url doesn't really exist");
+            return false;
+        }
+
+        $logger->debug("Fetching info,$url");
+
+        if (!$config->development) {
+            preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)/',$url,$matches);
+            file_put_contents(__DIR__.'/../resources/restaurants/'.$matches[1]."_info.html",$html);
+        }
+
+        $crawler->filter('script')->each(function(Crawler $node, $i){
+            global $information;
+            $script = $node->html();
+            preg_match('/^\s*dataLayer\.push\((.+)\);/',$script,$matches);
+
+            if($matches){
+                $decoded = json_decode($matches[1]);
+
+                if($decoded->trData){
+                    $information = $decoded->trData;
+                    // die( print_r($information) );
+                }
+
+            }
+            
+        });
 
         $crawler->filter('.restaurantOverview ')->each(function(Crawler $node, $i){
 
@@ -327,7 +562,7 @@ class justEat {
 
             $node->filter('h1')->each(function(Crawler $node, $i){
                 global $restaurant,$logger;
-                $restaurant->name = $this->shorten($node->text());
+                $restaurant->name = shorten($node->html());
                 $logger->notice("New Restaurant: ".$restaurant->name);
             });
 
@@ -336,46 +571,48 @@ class justEat {
             $node->filter('.cuisines')->each(function(Crawler $node, $i){
 
                 global $restaurant;
-                $restaurant->categories = $this->shorten($node->text());
+                $restaurant->categories = shorten($node->html());
                 
             });
             
             $node->filter('.address')->each(function(Crawler $node, $i){
+                global $config;
 
-                $location = explode(",", $this->shorten($node->text()));
+                $location = explode(",", shorten($node->html()));
                 $length   = count($location);
                 
                 global $restaurant;
                 
                 switch ($length) {
                     case $length === 3:
-                        $restaurant->address1 = $this->shorten($location[0]);
+                        $restaurant->address1 = shorten($location[0]);
                         $restaurant->address2 = '';
                         $restaurant->address3 = '';
-                        $restaurant->postcode     = $this->shorten($location[2]);
-                        $restaurant->city         = $this->shorten($location[1]);
+                        $restaurant->postcode     = shorten($location[2]);
+                        $restaurant->city         = shorten($location[1]);
                         break;
                     
                     case $length === 4:
-                        $restaurant->address1 = $this->shorten($location[0]);
-                        $restaurant->address2 = $this->shorten($location[1]);
+                        $restaurant->address1 = shorten($location[0]);
+                        $restaurant->address2 = shorten($location[1]);
                         $restaurant->address3 = '';
-                        $restaurant->postcode     = $this->shorten($location[3]);
-                        $restaurant->city         = $this->shorten($location[2]);
+                        $restaurant->postcode     = shorten($location[3]);
+                        $restaurant->city         = shorten($location[2]);
                         break;
                     
                     case $length === 5:
-                        $restaurant->address1 = $this->shorten($location[2]);
-                        $restaurant->address2 = $this->shorten($location[0]);
-                        $restaurant->address3 = $this->shorten($location[1]);
+                        $restaurant->address1 = shorten($location[2]);
+                        $restaurant->address2 = shorten($location[0]);
+                        $restaurant->address3 = shorten($location[1]);
                         
-                        $restaurant->postcode = $this->shorten($location[4]);
-                        $restaurant->city     = $this->shorten($location[3]);
+                        $restaurant->postcode = shorten($location[4]);
+                        $restaurant->city     = shorten($location[3]);
                         break;
                 }
-                
-                $restaurant->country = 'United Kingdom';
-                $restaurant->county  = 'West Midlands';
+
+                $restaurant->address = $restaurant->address1.",".$restaurant->address2.",".$restaurant->address3;
+                $restaurant->country = $config->country;
+                $restaurant->county  = $config->county;
 
             });
             
@@ -384,7 +621,7 @@ class justEat {
         $crawler->filter('.restaurantMenuDescription')->each(function(Crawler $node, $i)
         {
             global $restaurant;
-            $restaurant->description = $this->shorten($node->text());
+            $restaurant->description = shorten($node->html());
         });
         
         $crawler->filter('.restaurantOpeningHours table')->each(function(Crawler $node, $i)
@@ -418,16 +655,21 @@ END;
             
             $restaurant->hours .= ']';
             
-            $restaurant->hours = $this->shorten(str_replace(',]', ']', $restaurant->hours));
+            $restaurant->hours = shorten(str_replace(',]', ']', $restaurant->hours));
             
         });
 
-        return $restaurant;
-    }
+    $place = places($restaurant);
+    $restaurant->hours = $place->opening_hours;
+    $restaurant->location = $place->location;
+
+    return $restaurant;
+
+}
 
     public function food($categories){
 
-        global $database;
+        global $database,$logger;
         $database = new Database();
         $connection = $database->connection;
         $restaurant_id = $this->restaurant_id;
@@ -439,6 +681,7 @@ END;
             $database->query("INSERT INTO category (name, description) VALUES ('$catName', '$catDescription')");
             $catId = $connection->insert_id;
 
+            $logger->debug("Inserting Category $catName" );
             //Insert into db and category_id and use to insert food
             foreach($category->foods as $food){
                 $foodName = $food->name;
@@ -472,71 +715,101 @@ END;
 
     public function insert($restaurant){
 
-        global $database,$logger;
+        global $database,$logger,$config;
         $database = new Database();
 
-        $name         = $restaurant->name;
-        $hours        = $restaurant->hours;
-        $categories   = $restaurant->categories;
-        $online_id    = $restaurant->online_id;
-        $user_id      = $this->user_id;
+        $user_id        = $config->user_id;
+        $name           = $restaurant->name;
+        $hours          = $restaurant->hours;
+        $categories     = $restaurant->categories;
+        $online_id      = $restaurant->online_id;
+        $hygiene_rating = $restaurant->hygiene_rating;
 
-        $address1     = $restaurant->address1;
-        $address2     = $restaurant->address2;
-        $address3     = $restaurant->address3;
-        $postcode     = $restaurant->postcode;
-        $county       = $restaurant->county;
-        $country      = $restaurant->country;
-        $url          = $restaurant->url;
-        $city         = $this->city;
+        $address1       = $restaurant->address1;
+        $address2       = $restaurant->address2;
+        $address3       = $restaurant->address3;
+        $postcode       = $restaurant->postcode;
+        $county         = $restaurant->county;
+        $country        = $restaurant->country;
+        $url            = $restaurant->url;
+
+        $longitude = $restaurant->location->longitude;
+        $latitude = $restaurant->location->latitude;
+
+        $city           = $restaurant->city;
 
         $logo  = "https://d30v2pzvrfyzpo.cloudfront.net/uk/images/restaurants/$online_id.gif";
         
-        file_put_contents(__DIR__."/../resources/logos/$online_id.gif", fopen($logo, 'r'));
+        $saving_logo = __DIR__."/../resources/$config->city/logos/$online_id.gif";
+        file_put_contents($saving_logo, fopen($logo, 'r'));
 
-        $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url) 
-        values('$name','$hours','$categories','$user_id','$online_id','$url')");
+        $logger->debug("Saving Logo For $name at $saving_logo");
 
-        $logger->debug("Insert Restaurant, $name",array('url' => $url));
+        $logger->debug('Hygiene Rating: '. $hygiene_rating);
+
+        $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating) 
+        values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating)");
 
         $restaurant_id =  $database->connection->insert_id;
+
+        $logger->debug("Successfully Inserted New Restaurant, $name",array('id' => $restaurant_id,'url' => $url));
+
         $this->restaurant_id = $restaurant_id;
 
-        $database->query("insert into location (address_line1,address_line2,address_line3,postcode,city,county,country,restaurant_id) 
-        values ('$address1','$address2','$address3','$postcode','$city','$county','$country','$restaurant_id')");
+        $database->query("insert into location (address_line1,address_line2,address_line3,postcode,city,county,country,restaurant_id,longitude,latitude) 
+        values ('$address1','$address2','$address3','$postcode','$city','$county','$country','$restaurant_id',$longitude,$latitude)");
+
+        $logger->debug("Successfully Inserted Restaurant Location");
 
     }
 
     //Restaurant
-    public function restaurant($menuUrl){
+    public function restaurant($url){
 
-        global $logger;
+        global $logger,$config;
 
-        $logger->notice("Scraping Restaurant $menuUrl");
-        $infoUrl = str_replace('/menu', '', $menuUrl);
+        $logger->debug($url);
+        $config = $this->config;
+        $city = $config->city;
+
+        // if(!$config->development){
+
+            $logger->debug("Fetching menu for, $url");
+            $client = new Client();
+            $crawler = $client->request('GET', $url);
+            $html = $crawler->html();
+
+            preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/',$url,$matches);
+            $restaurant_file = __DIR__."/../resources/$city/restaurants/".$matches[1].".html";
+            file_put_contents($restaurant_file,$html);
+
+        // }
+        // else {
+        //     $restaurant_file = $url;
+        // }
+
+        $info = $this->page_info($restaurant_file);
         
-        $this->error($infoUrl);
+        $logger->debug("------ $info->name Restaurant Start -------");
 
-        $info = $this->info($infoUrl);
-        
         if($info){
-
-            $menu = $this->menu($menuUrl);
-
+            $menu = $this->menu($restaurant_file);
             $this->insert($info);
             $this->food($menu->categories);
-    
-            sleep(60);
-
         }
+
+        $logger->debug("------ $info->name Restaurant Complete -------");
 
     }
 
     public function new($new_restaurants){
 
         global $logger;
-        $city = $this->city;
-        $logger->notice('New Restaurants Added');
+        $city = $this->config->city;
+
+        $count = count($new_restaurants);
+        $logger->notice("All $count New Halal Restaurants Added");
+
         $list = json_encode($new_restaurants);
         file_put_contents("list/$city.json",$list);
 
@@ -565,9 +838,9 @@ END;
         $database = new Database;
         $result = $database->query("SELECT * from restaurant where url='$url'");
 
-        $logger->notice('Deleting Older Restaurant Data',array('query' =>"SELECT * from restaurant where url='$url'" ));
-
         if($result->num_rows){
+            $logger->notice('Restaurant Found In Database, Deleting It',array( 'url'=> $url ));
+
             $row  = $result->fetch_assoc();
             $restaurant_id = $row['id'];
 
