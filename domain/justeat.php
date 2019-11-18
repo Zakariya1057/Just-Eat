@@ -93,7 +93,8 @@ class justEat {
                 $logger->debug('Restaurants Found For PostCode');
 
                 $content = $crawler->html();
-
+		
+		$logger->debug('Sleeping Before Downloading Next Postcodes');
                 sleep($sleeping_time);
                 
             }
@@ -110,7 +111,7 @@ class justEat {
             $output[$postcode_name] = array(
                 'url' => $postcode_url,
                 'file' => $postcode_saving_location
-            );
+	    );
 
         });
 
@@ -405,9 +406,9 @@ class justEat {
             preg_match('/^\s*dataLayer\.push\((.+)\);/',$script,$matches);
 
             if($matches){
-                $decoded = json_decode($matches[1]);
+                $decoded = (object)json_decode($matches[1]);
 
-                if($decoded->trData){
+                if(isset($decoded->trData)){
                     $information = $decoded->trData;
                 }
 
