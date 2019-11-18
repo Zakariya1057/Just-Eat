@@ -1,5 +1,8 @@
 resources
 logs
-list
+
+list/*
+!list/.gitkeep
+
 vendor
 dev/*/
