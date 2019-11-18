@@ -86,13 +86,13 @@ try {
         if($search_new){
             $logger->debug("Creating New List $city.json");
 
-            // $postcodes = $site->postcodes($target_url,$city);
-            $postcodes = array(
-                'WS9' => [
-                    'url' => 'https://www.just-eat.co.uk/area/ws9-aldridge',
-                    'file'  => 'D:\Ampps\www\justeat\resources\Birmingham\postcodes\B1.html'
-                ]
-            );
+              $postcodes = $site->postcodes($target_url,$city);
+//            $postcodes = array(
+//                'WS9' => [
+//                    'url' => 'https://www.just-eat.co.uk/area/ws9-aldridge',
+//                    'file'  => 'D:\Ampps\www\justeat\resources\Birmingham\postcodes\B1.html'
+//                ]
+//            );
 
             $new_restaurants = $site->restaurants($postcodes);
 
