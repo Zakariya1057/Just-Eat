@@ -6,6 +6,7 @@ require_once  __DIR__.'/../data/data.php';
 require_once  __DIR__.'/../services/logger.php';
 require_once  __DIR__.'/../services/strings.php';
 require_once  __DIR__.'/../services/places.php';
+require_once  __DIR__.'/../services/save_image.php';
 
 
 use Symfony\Component\DomCrawler\Crawler;
@@ -764,11 +765,12 @@ END;
 
         $restaurant_id =  $database->connection->insert_id;
 	
-        $saving_logo = __DIR__."/../resources/$config->city/logos/$restaurant_id.gif";
-        file_put_contents($saving_logo, fopen($logo, 'r'));
+        // $saving_logo = __DIR__."/../resources/$config->city/logos/$restaurant_id.gif";
+        // file_put_contents($saving_logo, fopen($logo, 'r'));
+        // save_image( base64_encode(fopen($logo, 'r')), 'logo', "$restaurant_id.gif");
+        save_image( base64_encode(file_get_contents($logo)), 'logo', "$restaurant_id.gif");
 
-	$logger->debug("Saving Logo For $name at $saving_logo");
-
+        $logger->debug("Uploading logo/$restaurant_id.gif to S3 Bucket");
 
         $logger->debug("Successfully Inserted New Restaurant, $name",array('id' => $restaurant_id,'url' => $url));
 
@@ -886,7 +888,7 @@ END;
             }
             else {
                 //Failed on category,Delete last one
-                $database->query("delete from category order by id desc limit 1");
+                $database->query("delete ignore from category order by id desc limit 1");
                 $database->query("ALTER TABLE category AUTO_INCREMENT = 1");
             }
 
