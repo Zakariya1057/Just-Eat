@@ -422,15 +422,15 @@ class justEat {
             $restaurant->name = shorten($information->name);
 
             if($information->address){
-                $restaurant->address1 = $information->address->streetAddress;
+                $restaurant->address1 = shorten($information->address->streetAddress);
                 $restaurant->address2 = '';
                 $restaurant->address3 = '';
                 $restaurant->city = shorten($information->address->addressLocality);
                 $restaurant->address_country = shorten($information->address->addressCountry);
-                $restaurant->postcode = $information->address->postalCode;
+                $restaurant->postcode = shorten($information->address->postalCode);
 
-                $restaurant->country = $config->country;
-                $restaurant->county  = $config->county;
+                $restaurant->country = shorten($config->country);
+                $restaurant->county  = shorten($config->county);
             }
 
             preg_match('/(.+?)\s-\s[A-Z].+/i' ,$restaurant->name,$matches1);
@@ -492,20 +492,28 @@ class justEat {
             for($i =0; $i < count($information->openingHours);$i++){
 
                 $weekday = str_replace('"','',$information->openingHours[$i]);
-                preg_match('/^(\w+)\W+(\d+:\d+)\W+(\d+:\d+)/',$weekday,$matches);
+                preg_match('/^(\w+)\W+(\d+:\d+)\W+(\d+:\d+)|^(\w+)\W+\-/',$weekday,$matches);
                 if(!$matches){
-                    $logger->error('Opening Hours, Weekdays Format Not Recognised',$information->openingHours);
+			$logger->error('Opening Hours, Weekdays Format Not Recognised',$information->openingHours);
+			return;
                 }
                 
                 $day = $days[$i];
-                // return $matches;
-                $open = $matches[2];
-                $close =$matches[3];
+		// return $matches;
 
-                $open_hours = new data();
-                $open_hours->day = $day;
-                $open_hours->open = $open;
-                $open_hours->close = $close;
+		if(count($matches) > 2){
+			$open = $matches[2];
+                	$close =$matches[3];
+		}
+		else {
+			$open = '';
+			$close = '';
+		}
+
+		$open_hours = new data();
+               	$open_hours->day = $day;
+               	$open_hours->open = $open;
+               	$open_hours->close = $close;
 
                 $opening_hours[] = $open_hours;
             }
@@ -792,8 +800,8 @@ END;
         $config = $this->config;
         $city = $config->city;
 	
-        if( $this->exists($url) ){
-            return $logger->warning('Skipping Restaurant, Already Exists In Database',array('url' => $url));
+        if( !$this->exists($url) ){
+		return $logger->warning('Skipping Restaurant, Already Exists In Database',array('url' => $url));
         }
 
         // if(!$config->development){
@@ -802,7 +810,10 @@ END;
             $crawler = $client->request('GET', $url);
             $html = $crawler->html();
 
-            preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/',$url,$matches);
+	    preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/',$url,$matches);
+
+	    if(!$matches) die("Invalid Just Menu URL Provided: $url");
+
             $restaurant_file = __DIR__."/../resources/$city/restaurants/".$matches[1].".html";
             file_put_contents($restaurant_file,$html);
 
@@ -843,14 +854,20 @@ END;
         $database = new Database();
 
         $logger->debug("Checking If Present Already $url");
+	
+	$unique = false;
 
         $results = $database->query("select * from restaurant where url='$url'");
-        if($results->num_rows){
+        if($results->num_rows != 0){
             $logger->error("Duplicate Restaurant");
-            return true;
-        }
-        $logger->debug("New Restaurant");
-        return false;
+	}
+	else {
+		$logger->debug("New Restaurant");
+		$unique = true;
+	}
+
+	return $unique;
+
     }
 
     //If previous fails due to error, delete all relating to it and reset incrementer

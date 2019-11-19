@@ -62,14 +62,14 @@ try {
         if(file_exists($error_list)){
             $error_restaurant = json_decode( file_get_contents($error_list) );
 
-            if(count($error_list) != 0){
+            if(count($error_restaurant) != 0){
                 $logger->debug('Failed Restaurant Found');
                 $site->error(  $error_restaurant[0] );
             }
 
             file_put_contents($error_list,'[]');
         }
-        
+
         $search_new = true;
         if(file_exists($postcode_list)){
             $logger->debug("$city List Found");
