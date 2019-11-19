@@ -1,5 +1,8 @@
-resources
-logs
+resources/*
+!resources/.gitkeep
+
+logs/*
+!logs/.gitkeep
 
 list/*
 !list/.gitkeep
