@@ -23,7 +23,7 @@ if(!file_exists($logs_directory)){
     mkdir($logs_directory);
 }
 
-if($config->development){
+if($config->stdout){
     $logger->pushHandler(new StreamHandler('php://stdout', Logger::DEBUG));
 }
 
