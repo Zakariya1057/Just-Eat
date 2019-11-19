@@ -10,5 +10,6 @@ list/*
 failed/*
 !failed/.gitkeep
 
-vendor/
+vendor
+
 dev/*/
