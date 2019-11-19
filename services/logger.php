@@ -23,7 +23,9 @@ if(!file_exists($logs_directory)){
     mkdir($logs_directory);
 }
 
-$logger->pushHandler(new StreamHandler('php://stdout', Logger::DEBUG));
+if($config->development){
+    $logger->pushHandler(new StreamHandler('php://stdout', Logger::DEBUG));
+}
 
 $logger->pushHandler(new StreamHandler("$logs_directory/debug.log", Logger::DEBUG));
 $logger->pushHandler(new StreamHandler("$logs_directory/info.log", Logger::INFO));
