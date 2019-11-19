@@ -22,19 +22,19 @@ try {
 
     $city_directory = __DIR__."/resources/$city";
     if (!file_exists($city_directory)) {
-        mkdir($city_directory);
+        mkdir($city_directory) or die("Failed To Create Directory: $city_directory");
     }
 
     if (!file_exists($city_directory."/postcodes")) {
-        mkdir($city_directory."/postcodes");
+        mkdir($city_directory."/postcodes") or die("Failed To Create Directory: $city_directory/postcodes");
     }
 
     if (!file_exists($city_directory."/restaurants")) {
-        mkdir($city_directory."/restaurants");
+        mkdir($city_directory."/restaurants") or die("Failed To Create Directory: $city_directory/restaurants");
     }
 
     if (!file_exists($city_directory."/logos")) {
-        mkdir($city_directory."/logos");
+        mkdir($city_directory."/logos") or die("Failed To Create Directory: $city_directory/logos");;
     }
 
     $current_restaurant;
@@ -131,6 +131,11 @@ try {
 }
 catch (Exception $e) {
     $message = $e->getMessage();
+    
+    if(!isset($current_restaurant)){ 
+    	$current_restaurant = array();
+    }
+
     send_message("Script Error: $message", (array)$current_restaurant);
     file_put_contents(__DIR__.'/failed/failed.json',json_encode( [$current_restaurant] ));
     $logger->critical("Script Failure: $message",(array)$current_restaurant);
