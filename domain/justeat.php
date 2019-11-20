@@ -885,9 +885,9 @@ END;
                     break;
                 }
                 else {
+                    $logger->warning('Retry Restaurant Info, Not Found Yet');
                     sleep($wait);
                     $this->donwload_page($url);
-                    $logger->warning('Retry Restaurant Info, Not Found Yet');
                 }
             }
             
@@ -908,9 +908,9 @@ END;
                         break;
                     }
                     else {
+                        $logger->warning('Retry Restaurant Menu Not Found Yet');
                         sleep($wait);
                         $this->donwload_page($url);
-                        $logger->warning('Retry Restaurant Menu Not Found Yet');
                     }
 
                 }
