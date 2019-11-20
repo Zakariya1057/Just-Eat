@@ -389,6 +389,10 @@
             
             $restaurant->categories = $categories;
             
+            if(count($categories) == 0){
+                return false;
+            }
+
             return $restaurant;
         }
         
@@ -431,8 +435,11 @@
                 
             });
             
-            $restaurant->url = $information->menuurl;
+
             if ($information) {
+                
+                $restaurant->url = $information->menuurl;
+
                 // print_r($information);
                 $restaurant->name = shorten($information->name);
                 
@@ -543,7 +550,7 @@
                 $restaurant->hours = json_encode($opening_hours);
                 
             } else {
-                die('No Json Information Found');
+                return false;
             }
             
             return $restaurant;
@@ -562,7 +569,7 @@
             if ($config->development) {
                 $crawler = new Crawler(file_get_contents($url));
             } else {
-                die('Live');
+                throw new Exception('Live');
                 
                 $client  = new Client();
                 $crawler = $client->request('GET', $url);
@@ -845,29 +852,66 @@ END;
             
             preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/', $url, $matches);
             
-            if (!$matches)
-                die("Invalid Just Menu URL Provided: $url");
+            if (!$matches){
+                throw new Exception("Invalid Just Menu URL Provided: $url");
+            }
+
             
             $restaurant_file = __DIR__ . "/../resources/$city/restaurants/" . $matches[1] . ".html";
             file_put_contents($restaurant_file, $html);
+
             
             // }
             // else {
             //     $restaurant_file = $url;
             // }
             
-            $info = $this->page_info($restaurant_file);
-            
-            if ($info->url != $url) {
-                die('URL Has Changed Into: ' . $info->url);
+            //If they give us a different page, try again upto 4 times before erroring
+            $retry = $config->retry_times;
+
+            for($i =0;$i < $retry;$i++){
+                $info = $this->page_info($restaurant_file);
+                if($info){
+                    $logger->warning('Restaurant Info Found');
+                    break;
+                }
+                else {
+                    $logger->warning('Retry Restaurant Info, Not Found Yet');
+                }
             }
             
             $logger->debug("------ $info->name Restaurant Start -------");
             
             if ($info) {
-                $menu = $this->menu($restaurant_file);
+
+                if ($info->url != $url) {
+                    throw new Exception('URL Has Changed Into: ' . $info->url);
+                }
+
+                for($i =0;$i < $retry;$i++){
+
+                    $menu = $this->menu($restaurant_file);
+
+                    if($menu){
+                        $logger->warning('Restaurant Menu Found');
+                        break;
+                    }
+                    else {
+                        $logger->warning('Retry Restaurant Menu Not Found Yet');
+                    }
+
+                }
+
+                if(!$menu){
+                    throw new Exception('Failed To Find Restaurant Menu');
+                }
+
                 $this->insert($info);
                 $this->food($menu->categories);
+
+            }
+            else {
+                throw new Exception('Restaurant Info Not Found');
             }
             
             $logger->debug("------ $info->name Restaurant Complete -------");
@@ -881,7 +925,7 @@ END;
             $city = $this->config->city;
             
             $new_restaurants = array_unique($new_restaurants);
-            
+
             $count = count($new_restaurants);
             $logger->notice("All $count New Halal Restaurants Added");
             
