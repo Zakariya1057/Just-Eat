@@ -725,7 +725,7 @@ END;
             
         }
         
-        public function food($categories)
+        public function insert_menu($categories)
         {
             
             global $database, $logger;
@@ -772,7 +772,7 @@ END;
             
         }
         
-        public function insert($restaurant)
+        public function insert_restaurant($restaurant)
         {
             
             global $database, $logger, $config;
@@ -828,6 +828,32 @@ END;
             
         }
         
+        public function donwload_page($url){
+
+            global $config,$logger;
+
+            $city = $this->config->city;
+            
+            $client  = new Client();
+            $crawler = $client->request('GET', $url);
+            $html    = $crawler->html();
+            
+            preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/', $url, $matches);
+            
+            if (!$matches){
+                throw new Exception("Invalid Menu URL Provided: $url");
+            }
+
+            $restaurant_name = $matches[1];
+            $restaurant_file = __DIR__ . "/../resources/$city/restaurants/$restaurant_name.html";
+            file_put_contents($restaurant_file, $html);
+
+            $logger->debug("Downloading $url -> $restaurant_name.html");
+
+            return $restaurant_file;
+
+        }
+
         //Restaurant
         public function restaurant($url)
         {
@@ -844,30 +870,13 @@ END;
                 ));
             }
             
-            // if(!$config->development){
-            
-            $client  = new Client();
-            $crawler = $client->request('GET', $url);
-            $html    = $crawler->html();
-            
-            preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/', $url, $matches);
-            
-            if (!$matches){
-                throw new Exception("Invalid Just Menu URL Provided: $url");
-            }
-
-            
-            $restaurant_file = __DIR__ . "/../resources/$city/restaurants/" . $matches[1] . ".html";
-            file_put_contents($restaurant_file, $html);
-
-            
-            // }
-            // else {
-            //     $restaurant_file = $url;
-            // }
+            $restaurant_file = $this->donwload_page($url);
             
             //If they give us a different page, try again upto 4 times before erroring
-            $retry = $config->retry_times;
+            $retry = $config->retry->count;
+            $wait  = $config->retry->wait;
+
+            // print_r($config->retry);
 
             for($i =0;$i < $retry;$i++){
                 $info = $this->page_info($restaurant_file);
@@ -876,6 +885,8 @@ END;
                     break;
                 }
                 else {
+                    sleep($wait);
+                    $this->donwload_page($url);
                     $logger->warning('Retry Restaurant Info, Not Found Yet');
                 }
             }
@@ -897,6 +908,8 @@ END;
                         break;
                     }
                     else {
+                        sleep($wait);
+                        $this->donwload_page($url);
                         $logger->warning('Retry Restaurant Menu Not Found Yet');
                     }
 
@@ -906,8 +919,8 @@ END;
                     throw new Exception('Failed To Find Restaurant Menu');
                 }
 
-                $this->insert($info);
-                $this->food($menu->categories);
+                $this->insert_restaurant($info);
+                $this->insert_menu($menu->categories);
 
             }
             else {
