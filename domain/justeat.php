@@ -412,7 +412,7 @@
             $error = $crawler->filter('.c-search__error-text')->count();
             
             if ($error) {
-                $logger->error("$url doesn't really exist");
+                $logger->error("Restaurant Has been Deleted");
                 return false;
             }
             
