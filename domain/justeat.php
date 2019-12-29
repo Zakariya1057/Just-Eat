@@ -396,7 +396,7 @@
             return $restaurant;
         }
         
-        public function page_info($url)
+        public function restaurant_info($filename)
         {
             
             global $restaurant, $logger, $config, $information;
@@ -405,9 +405,9 @@
             $information = null;
             $restaurant = new data();
             
-            $crawler = new Crawler(file_get_contents($url));
+            $crawler = new Crawler(file_get_contents($filename));
             
-            $restaurant->file = $url;
+            $restaurant->file = $filename;
             
             $error = $crawler->filter('.c-search__error-text')->count();
             
@@ -416,7 +416,7 @@
                 return false;
             }
             
-            $logger->debug("Fetching info,$url");
+            $logger->debug("Fetching Restaurant Information: $filename");
             
             $crawler->filter('script')->each(function(Crawler $node, $i)
             {
@@ -443,6 +443,17 @@
                 // print_r($information);
                 $restaurant->name = shorten($information->name);
                 
+                if($information->rating){
+                    // $rating = new data();
+                    // $rating->num = $information->rating->nRatings;
+                    // $rating->average = $information->rating->average;
+                    // $restaurant->rating = $rating;
+
+                    $restaurant->rating = $information->rating->average;
+                    $restaurant->num_ratings =  $information->rating->nRatings;
+                }
+
+
                 if ($information->address) {
                     $restaurant->address1        = shorten($information->address->streetAddress);
                     $restaurant->address2        = '';
@@ -469,13 +480,13 @@
                 
                 $online_id             = $information->trId;
                 $restaurant->online_id = $online_id;
-                $rating                = 'NULL';
+                $hygiene_rating        = 'NULL';
                 
                 if ($online_id) {
                     
                     
                     if ($config->development) {
-                        $rating = rand(1, 5);
+                        $hygiene_rating = rand(1, 5);
                     } else {
                         
                         $client = HttpClient::create();
@@ -488,7 +499,7 @@
                             $content = json_decode($response->getContent());
                             
                             if (is_numeric($content->rating)) {
-                                $rating = $content->rating;
+                                $hygiene_rating = $content->rating;
                             }
                             
                         } else {
@@ -500,7 +511,8 @@
                     
                 }
                 
-                $restaurant->hygiene_rating = $rating;
+                
+                $restaurant->hygiene_rating = $hygiene_rating;
                 
                 $restaurant->location   = $information->geo;
                 $restaurant->categories = str_replace('|', ', ', $information->cuisines);
@@ -795,6 +807,9 @@ END;
             
             $longitude = $restaurant->location->longitude;
             $latitude  = $restaurant->location->latitude;
+
+            $rating = $restaurant->rating;
+            $num_ratings = $restaurant->num_ratings;
             
             $city = $restaurant->city;
             
@@ -802,8 +817,8 @@ END;
             
             $logger->debug('Hygiene Rating: ' . $hygiene_rating);
             
-            $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating) 
-        values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating)");
+            $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating,rating,num_ratings) 
+        values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating,$rating,$num_ratings)");
             
             $restaurant_id = $database->connection->insert_id;
             
@@ -846,6 +861,12 @@ END;
 
             $restaurant_name = $matches[1];
             $restaurant_file = __DIR__ . "/../resources/$city/restaurants/$restaurant_name.html";
+            //IF captcha page then wait for a few seconds and try again
+
+            if(is_nan(stripos($html,'<script src="/_Incapsula_Resource?'))){
+                $logger->error('Captcha Page Found. Trying Again');
+            }
+
             file_put_contents($restaurant_file, $html);
 
             $logger->debug("Downloading $url -> $restaurant_name.html");
@@ -879,7 +900,7 @@ END;
             // print_r($config->retry);
 
             for($i =0;$i < $retry;$i++){
-                $info = $this->page_info($restaurant_file);
+                $info = $this->restaurant_info($restaurant_file);
                 if($info){
                     $logger->warning('Restaurant Info Found');
                     break;
@@ -1018,6 +1039,51 @@ END;
             
         }
         
+        public function update_restaurants(){
+            global $database,$logger,$config;
+
+            $database = new Database();
+
+            //Fetch Restaurant That haven't been updated in a week.
+            // $results  = $database->query("SELECT * FROM restaurant where url like 'https://www.just-eat.co.uk/%' and updated < ( NOW() - INTERVAL 7 DAY )");
+            $results  = $database->query("SELECT * FROM restaurant where url like 'https://www.just-eat.co.uk/%'");
+            
+            $restaurant_count = $results->num_rows;
+
+            $logger->debug("$restaurant_count Restaurants Require Updates");
+
+
+            if($restaurant_count){
+                for($i =0;$i < $restaurant_count;$i++){
+                    $row = $results->fetch_assoc();
+                    $restaurant_url = $row['url'];
+                    $restaurant_id  = $row['id'];
+                    $restaurant_name = $row['name'];
+                    $hygiene_rating = $row['hygiene_rating'];
+                    $restaurant_rating = $row['rating'];
+
+                    $restaurant_file = $this->donwload_page($restaurant_url);
+                    // $restaurant_file = 'D:\Ampps\www\justeat\resources\Birmingham\restaurants\restaurants-cafe-aromatico-walsall.html';
+
+                    $info = (object) $this->restaurant_info($restaurant_file);
+                    // print_r($info);
+
+                    $new_hygiene_rating = $info->hygiene_rating ? $info->hygiene_rating : $hygiene_rating;
+                    $new_hours          = $info->hours;
+                    $new_rating         = $info->rating->average;
+                    $new_num_ratings    = $info->rating->num;
+
+                    $logger->debug("Updating $restaurant_name($restaurant_id)\t Hygiene Rating: $hygiene_rating -> $new_hygiene_rating\t Rating: $restaurant_rating -> $new_rating");
+                    
+                    // print("UPDATE restaurant set hygiene_rating='$new_hygiene_rating',opening_hours='$new_hours',rating='$new_rating',num_ratings='$new_num_ratings' where id='$restaurant_id'");
+
+                    $update = $database->query("UPDATE restaurant set hygiene_rating=$new_hygiene_rating,opening_hours='$new_hours',rating=$new_rating,num_ratings=$new_num_ratings where id='$restaurant_id'");
+
+                    // sleep($config->retry->wait);
+                }   
+            }
+
+        }
     }
     
 ?>
