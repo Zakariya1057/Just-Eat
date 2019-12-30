@@ -34,7 +34,8 @@
             
             global $logger, $output, $location, $config, $client, $development, $sleeping_time;
             
-            $client = new Client();
+            // $client = new Client();
+            $client = HttpClient::create();
             
             $config = $this->config;
             
@@ -42,32 +43,39 @@
             
             $location = __DIR__ . "/../resources/$city/postcodes";
             
-            if (!file_exists($location)) {
-                mkdir($location);
-            } else {
+            // if (!file_exists($location)) {
+            //     mkdir($location);
+            // } else {
                 
-                foreach (scandir($location) as $file) {
+            //     foreach (scandir($location) as $file) {
                     
-                    $file = $location . "/" . $file;
+            //         $file = $location . "/" . $file;
                     
-                    //Make sure that this is a file and not a directory.
-                    if (is_file($file)) {
-                        //Use the unlink function to delete the file.
-                        unlink($file);
-                    }
+            //         //Make sure that this is a file and not a directory.
+            //         if (is_file($file)) {
+            //             //Use the unlink function to delete the file.
+            //             unlink($file);
+            //         }
                     
-                }
+            //     }
                 
-            }
+            // }
             
-            $crawler = $client->request('GET', $url);
+            $logger->debug('Fetching PostCodes From '.$url);
+
+            $response = $client->request('GET', $url);
+            $crawler = new Crawler($response->getContent());
             
+            $logger->debug('PostCodes Fetched');
+
             $development   = $this->development;
             $sleeping_time = $config->waiting_time->postcode;
             
+            $logger->debug(count($crawler->filter('li.grouped-link-list__link-item a'))." Postcodes Found");
+
             $crawler->filter('li.grouped-link-list__link-item a')->each(function(Crawler $node, $i)
             {
-                global $output, $location, $logger, $sleeping_time, $client, $development;
+                global $output, $location, $logger, $sleeping_time, $client, $development,$config;
                 
                 $postcode_url  = $node->attr('href');
                 $postcode_name = shorten(preg_replace('/.+,/', '', $node->html()));
@@ -79,73 +87,76 @@
                     'url' => $postcode_url
                 );
                 
+                $logger->debug('PostCode: '.$postcode_name, $postcode_info);
                 //////////////////////////////////////////////////////////////////////////////
                 
                 if (!$development) {
                     
-                    $crawler = $client->request('GET', $postcode_url);
+                    $logger->debug('Downloading '.$postcode_url);
+
+                    $response = $client->request('GET', $postcode_url,['timeout' => 20]);
+                    // $crawler = $client->request('GET', $postcode_url,['timeout' => 0.5]);
                     
-                    $logger->debug('Download PostCode', $postcode_info);
+                    if($response->getStatusCode() != 200){
+                        $logger->error('Failed To Fetch Page. Trying Again');
+
+                        for($i =0;$i < $config->retry->count;$i++){
+                            $response = $client->request('GET', $postcode_url,['timeout' => 20]);
+
+                            if($response->getStatusCode() != 200){
+                                $logger->error('Failed To Fetch Page. Trying Again ...');
+                            }
+                            else {
+                                $logger->error('Successfully Loaded Page');
+                            }
+                        }
+                    }
+
+                    $crawler = new Crawler($response->getContent());
+
+                    $logger->debug('Download Complete');
+
+                    // $restaurant = $crawler->filter('section.c-listing-item');
                     
-                    $restaurant = $crawler->filter('section.c-listing-item');
-                    
-                    if (sizeof($restaurant) == 0) {
-                        $logger->debug("No Restaurants For Postcode", $postcode_info);
+                    // if (sizeof($restaurant) == 0) {
+                    //     $logger->debug("No Restaurants For Postcode", $postcode_info);
+                    //     return;
+                    // }
+
+                    // $restaurant = $crawler->filter('section.c-listing-item')->eq(0);
+                    $restaurant_count = count($crawler->filter('section.c-listing-item'));
+
+                    if ($restaurant_count == 0) {
+                        $logger->debug("No Restaurants Found", $postcode_info);
                         return;
                     }
                     
-                    $logger->debug('Restaurants Found For PostCode');
+                    $logger->debug("$restaurant_count Restaurants Found");
                     
                     $content = $crawler->html();
+                
+                    $logger->debug("Saving File At $postcode_name.html");
+                    file_put_contents($postcode_saving_location, $content);
                     
-                    $logger->debug('Sleeping Before Downloading Next Postcodes');
+                    $output[$postcode_name] = array(
+                        'url' => $postcode_url,
+                        'file' => $postcode_saving_location
+                    );
+
+                    $logger->debug('Sleeping...');
                     sleep($sleeping_time);
                     
                 } else {
                     $content = $postcode_url;
                 }
                 
-                //////////////////////////////////////////////////////////////////////////////
-                
-                $logger->debug("Saving New Postcode File $postcode_name.html");
-                
-                file_put_contents($postcode_saving_location, $content);
-                
-                $output[$postcode_name] = array(
-                    'url' => $postcode_url,
-                    'file' => $postcode_saving_location
-                );
                 
             });
             
-            // print_r($output);
-            // $city = $this->city;
-            // $postcode_area = $this->postcode_area;
-            
-            // for ($i = 1; $i <= 99;$i++){
-            
-            //     $url = "https://www.just-eat.co.uk/area/$postcode_area$i-$city";
-            
-            //     $crawler = $client->request('GET', $url );
-            
-            //     $restaurant = $crawler->filter('section.c-listing-item');
-            
-            //     if(sizeof($restaurant) !== 0){
-            
-            //         $logger->debug("PostCode Download $url Found");
-            
-            //         $path = __DIR__."/../resources/postcodes/$postcode_area$i-$city.html";
-            //         $output[] = $path;
-            //         file_put_contents($path,$crawler->html());
-            
-            //     }
-            //     else {
-            //         $logger->debug("PostCode $url, no restaurants found");
-            //     }
-            
-            //     sleep(10);
-            
-            // }
+            if(count($output) == 0){
+                // die('No PostCodes Found');
+                throw new Exception("No PostCodes Found At $url");
+            }
             
             return $output;
             
