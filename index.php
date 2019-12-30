@@ -119,15 +119,20 @@
     catch (Exception $e) {
         $message = $e->getMessage();
         
-        if (!isset($current_restaurant)) {
-            $current_restaurant = array();
+        // if (!isset($current_restaurant)) {
+        //     $current_restaurant = array();
+        // }
+
+        send_message("Script Error: $message", (array) $current_restaurant);
+
+        if($current_restaurant){
+            file_put_contents(__DIR__ . '/failed/failed.json', json_encode(array(
+                $current_restaurant
+            )));
         }
         
-        send_message("Script Error: $message", (array) $current_restaurant);
-        file_put_contents(__DIR__ . '/failed/failed.json', json_encode(array(
-            $current_restaurant
-        )));
         $logger->critical("Script Failure: $message", (array) $current_restaurant);
+        
         send_email("ERROR: $message");
     }
     
