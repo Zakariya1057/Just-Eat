@@ -828,8 +828,11 @@ END;
             
             $logger->debug('Hygiene Rating: ' . $hygiene_rating);
             
-            $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating,rating,num_ratings) 
-        values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating,$rating,$num_ratings)");
+            $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating) 
+        values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating)");
+
+        //     $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating,rating,num_ratings) 
+        // values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating,$rating,$num_ratings)");
             
             $restaurant_id = $database->connection->insert_id;
             
