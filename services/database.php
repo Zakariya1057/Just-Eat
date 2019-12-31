@@ -6,7 +6,6 @@
     class Database {
 
         public $connection;
-        public $host;
     
         public function __construct(){
             global $logger,$config;
@@ -15,9 +14,6 @@
                 return $this->connection;
             }
 
-            $this->host = $database_config->host;
-
-            // $config = new config;
             if($config->database->environment == 'live'){
                 $database_config = $config->database->live;
                 $logger->debug('Connecting To Live Database');
@@ -45,7 +41,6 @@
             global $logger;
             
             $results = $this->connection->query($sql);
-            // $logger->debug('Host: '.$this->host);
 
             if($results){ 
                 return $results;
