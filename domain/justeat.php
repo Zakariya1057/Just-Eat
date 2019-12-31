@@ -413,6 +413,9 @@
                 if(count($categories) == 0){
                     return false;
                 }
+                else {
+                    $restaurant->empty = 0;
+                }
 
             }
             
@@ -538,7 +541,7 @@
                 $restaurant->hygiene_rating = $hygiene_rating;
                 
                 $restaurant->location   = $information->geo;
-                $restaurant->categories = str_replace('|', ', ', $information->cuisines);
+                $restaurant->categories = str_replace('|', ', ', htmlentities($information->cuisines,ENT_QUOTES));
                 
                 $opening_hours = array();
                 
