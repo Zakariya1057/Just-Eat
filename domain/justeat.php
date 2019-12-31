@@ -409,9 +409,12 @@
                 });
 
                 $restaurant->categories = $categories;
-            
+                
+                //What if the single category is one of the ones not alllowed like specials
                 if(count($categories) == 0){
-                    return false;
+                    $logger->debug('No Acceptable Food Categories Found');
+                    $restaurant->empty = 1;
+                    // return false;
                 }
                 else {
                     $restaurant->empty = 0;
@@ -959,7 +962,7 @@ END;
                             $logger->warning('No Foods Found');
                         }
                         else {
-                            $logger->warning('Restaurant Menu Found');
+                            $logger->debug('Restaurant Menu Found');
                         }
                         
                         break;
