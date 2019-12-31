@@ -256,154 +256,166 @@
             
             $categories = array();
             
-            $crawler->filter('.category')->each(function(Crawler $node, $i)
-            {
-                
-                global $category, $categories, $logger;
-                $category        = new data();
-                $category->foods = array();
-                
-                $node->filter('h3')->each(function(Crawler $node, $i)
+            $category_count = count($crawler->filter('ul.menuCategoriesLinks li'));
+
+            if(!$category_count){
+                $logger->debug("No Food Categories Found");
+                $restaurant->empty = 1;
+            }
+            else {
+
+                $logger->debug("$category_count Food Categories Found");
+
+                $crawler->filter('.category')->each(function(Crawler $node, $i)
                 {
-                    global $category, $logger;
-                    $category_name  = shorten($node->html());
-                    $category->name = $category_name;
-                    // $logger->debug("Category: $category_name");
-                });
-                
-                if ($node->filter('.categoryDescription')->count() !== 0) {
                     
-                    $node->filter('.categoryDescription')->each(function(Crawler $node, $i)
+                    global $category, $categories, $logger;
+                    $category        = new data();
+                    $category->foods = array();
+                    
+                    $node->filter('h3')->each(function(Crawler $node, $i)
                     {
-                        global $category;
-                        $category->description = shorten($node->html(), false);
+                        global $category, $logger;
+                        $category_name  = shorten($node->html());
+                        $category->name = $category_name;
+                        // $logger->debug("Category: $category_name");
                     });
                     
-                } else {
-                    global $category;
-                    $category->description = '';
-                }
-                
-                preg_match('/Popular|Recommended|offer| New/i', $category->name, $matches);
-                
-                
-                if (!$matches) {
-                    
-                    $node->filter('.products')->each(function(Crawler $node, $i)
-                    {
+                    if ($node->filter('.categoryDescription')->count() !== 0) {
                         
-                        //With Sub Category
-                        $node->filter('.product.withSynonyms')->each(function(Crawler $node, $i)
+                        $node->filter('.categoryDescription')->each(function(Crawler $node, $i)
+                        {
+                            global $category;
+                            $category->description = shorten($node->html(), false);
+                        });
+                        
+                    } else {
+                        global $category;
+                        $category->description = '';
+                    }
+                    
+                    preg_match('/Popular|Recommended|offer| New/i', $category->name, $matches);
+                    
+                    
+                    if (!$matches) {
+                        
+                        $node->filter('.products')->each(function(Crawler $node, $i)
                         {
                             
-                            global $food, $category;
-                            $food          = new data();
-                            $food->options = array();
-                            $food->price   = 0;
-                            
-                            $node->filter('.information')->each(function(Crawler $node, $i)
+                            //With Sub Category
+                            $node->filter('.product.withSynonyms')->each(function(Crawler $node, $i)
                             {
                                 
-                                $node->filter('.name')->each(function(Crawler $node, $i)
-                                {
-                                    global $food;
-                                    $food->name = shorten($node->html());
-                                });
+                                global $food, $category;
+                                $food          = new data();
+                                $food->options = array();
+                                $food->price   = 0;
                                 
-                                if ($node->filter('.description')->count() !== 0) {
-                                    $node->filter('.description')->each(function(Crawler $node, $i)
+                                $node->filter('.information')->each(function(Crawler $node, $i)
+                                {
+                                    
+                                    $node->filter('.name')->each(function(Crawler $node, $i)
                                     {
                                         global $food;
-                                        $food->description = shorten($node->html(), false);
+                                        $food->name = shorten($node->html());
                                     });
-                                } else {
-                                    global $food;
-                                    $food->description = '';
-                                }
+                                    
+                                    if ($node->filter('.description')->count() !== 0) {
+                                        $node->filter('.description')->each(function(Crawler $node, $i)
+                                        {
+                                            global $food;
+                                            $food->description = shorten($node->html(), false);
+                                        });
+                                    } else {
+                                        global $food;
+                                        $food->description = '';
+                                    }
+                                    
+                                });
                                 
+                                
+                                $node->filter('.details')->each(function(Crawler $node, $i)
+                                {
+                                    
+                                    global $food, $subfood;
+                                    $subfood = new data();
+                                    
+                                    $node->filter('.synonymName')->each(function(Crawler $node, $i)
+                                    {
+                                        global $subfood;
+                                        $subfood->name = shorten($node->html());
+                                    });
+                                    
+                                    $node->filter('.price')->each(function(Crawler $node, $i)
+                                    {
+                                        global $subfood;
+                                        $subfood->price = shorten(str_replace('£', '', $node->html()));
+                                    });
+                                    
+                                    $food->options[] = $subfood;
+                                    
+                                });
+                                
+                                $category->foods[] = $food;
                             });
                             
-                            
-                            $node->filter('.details')->each(function(Crawler $node, $i)
+                            //Without Sub Category
+                            $node->filter('.product:not(.withSynonyms)')->each(function(Crawler $node, $i)
                             {
                                 
-                                global $food, $subfood;
-                                $subfood = new data();
+                                global $food, $category;
+                                $food          = new data();
+                                $food->options = null;
                                 
-                                $node->filter('.synonymName')->each(function(Crawler $node, $i)
+                                $node->filter('.information')->each(function(Crawler $node, $i)
                                 {
-                                    global $subfood;
-                                    $subfood->name = shorten($node->html());
+                                    
+                                    $node->filter('.name')->each(function(Crawler $node, $i)
+                                    {
+                                        global $food;
+                                        $food->name = shorten(($node->html()));
+                                    });
+                                    
+                                    if ($node->filter('.description')->count() !== 0) {
+                                        $node->filter('.description')->each(function(Crawler $node, $i)
+                                        {
+                                            global $food;
+                                            $food->description = shorten($node->html());
+                                        });
+                                    } else {
+                                        global $food;
+                                        $food->description = '';
+                                    }
+                                    
+                                    
                                 });
                                 
                                 $node->filter('.price')->each(function(Crawler $node, $i)
                                 {
-                                    global $subfood;
-                                    $subfood->price = shorten(str_replace('£', '', $node->html()));
+                                    global $food;
+                                    $food->price = shorten(str_replace('£', '', $node->html()));
                                 });
                                 
-                                $food->options[] = $subfood;
+                                $category->foods[] = $food;
                                 
                             });
-                            
-                            $category->foods[] = $food;
-                        });
-                        
-                        //Without Sub Category
-                        $node->filter('.product:not(.withSynonyms)')->each(function(Crawler $node, $i)
-                        {
-                            
-                            global $food, $category;
-                            $food          = new data();
-                            $food->options = null;
-                            
-                            $node->filter('.information')->each(function(Crawler $node, $i)
-                            {
-                                
-                                $node->filter('.name')->each(function(Crawler $node, $i)
-                                {
-                                    global $food;
-                                    $food->name = shorten(($node->html()));
-                                });
-                                
-                                if ($node->filter('.description')->count() !== 0) {
-                                    $node->filter('.description')->each(function(Crawler $node, $i)
-                                    {
-                                        global $food;
-                                        $food->description = shorten($node->html());
-                                    });
-                                } else {
-                                    global $food;
-                                    $food->description = '';
-                                }
-                                
-                                
-                            });
-                            
-                            $node->filter('.price')->each(function(Crawler $node, $i)
-                            {
-                                global $food;
-                                $food->price = shorten(str_replace('£', '', $node->html()));
-                            });
-                            
-                            $category->foods[] = $food;
                             
                         });
                         
-                    });
+                        $categories[] = $category;
+                        
+                    }
                     
-                    $categories[] = $category;
-                    
-                }
-                
-            });
-            
-            $restaurant->categories = $categories;
-            
-            if(count($categories) == 0){
-                return false;
-            }
+                });
 
+                $restaurant->categories = $categories;
+            
+                if(count($categories) == 0){
+                    return false;
+                }
+
+            }
+            
             return $restaurant;
         }
         
@@ -939,7 +951,14 @@ END;
                     $menu = $this->menu($restaurant_file);
 
                     if($menu){
-                        $logger->warning('Restaurant Menu Found');
+
+                        if($menu->empty){
+                            $logger->warning('No Foods Found');
+                        }
+                        else {
+                            $logger->warning('Restaurant Menu Found');
+                        }
+                        
                         break;
                     }
                     else {
@@ -950,12 +969,20 @@ END;
 
                 }
 
-                if(!$menu){
+                if($menu){
+
+                    if($menu->empty){
+                        $logger->debug('Skipping Empty Restaurant');
+                    }
+                    else {
+                        $this->insert_restaurant($info);
+                        $this->insert_menu($menu->categories);
+                    }
+
+                }
+                else {
                     throw new Exception('Failed To Find Restaurant Menu');
                 }
-
-                $this->insert_restaurant($info);
-                $this->insert_menu($menu->categories);
 
             }
             else {
