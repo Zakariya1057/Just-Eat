@@ -28,13 +28,12 @@
             $this->development = $config->development;
         }
         
-        //Get All Restaurant PostCodes For Given City
+        //Get All PostCodes With Restaurants
         public function postcodes($url, $city)
         {
             
             global $logger, $output, $location, $config, $client, $development, $sleeping_time;
             
-            // $client = new Client();
             $client = HttpClient::create();
             
             $config = $this->config;
@@ -88,14 +87,12 @@
                 );
                 
                 $logger->debug('PostCode: '.$postcode_name, $postcode_info);
-                //////////////////////////////////////////////////////////////////////////////
                 
                 if (!$development) {
                     
                     $logger->debug('Downloading '.$postcode_url);
 
                     $response = $client->request('GET', $postcode_url,['timeout' => 20]);
-                    // $crawler = $client->request('GET', $postcode_url,['timeout' => 0.5]);
                     
                     if($response->getStatusCode() != 200){
                         $logger->error('Failed To Fetch Page. Trying Again');
@@ -116,14 +113,6 @@
 
                     $logger->debug('Download Complete');
 
-                    // $restaurant = $crawler->filter('section.c-listing-item');
-                    
-                    // if (sizeof($restaurant) == 0) {
-                    //     $logger->debug("No Restaurants For Postcode", $postcode_info);
-                    //     return;
-                    // }
-
-                    // $restaurant = $crawler->filter('section.c-listing-item')->eq(0);
                     $restaurant_count = count($crawler->filter('section.c-listing-item'));
 
                     if ($restaurant_count == 0) {
@@ -178,7 +167,6 @@
                 
                 // $file = __DIR__."resources/postcodes/$postcode";
                 /////////////////////////////////////
-                
                 
                 if (file_exists($file)) {
                     
@@ -242,17 +230,6 @@
             
             $html    = file_get_contents($file);
             $crawler = new Crawler($html);
-            
-            // preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/',$url,$matches);
-            // file_put_contents(__DIR__.'/../resources/restaurants/'.$matches[1]."_menu.html",$html);
-            
-            //////////////////////////////////////////////////////////////////////////////////////////////
-            
-            // $html = file_get_contents(__DIR__.'/../resources/restaurants/restaurants-caspian-grill-and-pizza-birmingham.html');
-            // $crawler = new Crawler($html);
-            
-            /////////////////////////////////////////////////////////////////////////////////////////////
-            
             
             $categories = array();
             
