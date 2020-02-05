@@ -32,7 +32,7 @@
         public function postcodes($url, $city)
         {
             
-            global $logger, $output, $location, $config, $client, $development, $sleeping_time;
+            global $logger, $output, $location, $config, $client, $development, $sleeping_time, $retry_waiting_time;
             
             $client = HttpClient::create();
             
@@ -42,39 +42,25 @@
             
             $location = __DIR__ . "/../resources/$city/postcodes";
             
-            // if (!file_exists($location)) {
-            //     mkdir($location);
-            // } else {
-                
-            //     foreach (scandir($location) as $file) {
-                    
-            //         $file = $location . "/" . $file;
-                    
-            //         //Make sure that this is a file and not a directory.
-            //         if (is_file($file)) {
-            //             //Use the unlink function to delete the file.
-            //             unlink($file);
-            //         }
-                    
-            //     }
-                
-            // }
             
-            $logger->debug('Fetching PostCodes From '.$url);
+            $logger->info('Fetching PostCode List From '.$url);
 
             $response = $client->request('GET', $url);
             $crawler = new Crawler($response->getContent());
             
-            $logger->debug('PostCodes Fetched');
+            $logger->debug('PostCodes List Page Fetched');
 
             $development   = $this->development;
             $sleeping_time = $config->waiting_time->postcode;
+            $retry_waiting_time = $config->retry->wait;
             
-            $logger->debug(count($crawler->filter('li.grouped-link-list__link-item a'))." Postcodes Found");
+            $postcode_links = $crawler->filter('li.link-item a[href]');
 
-            $crawler->filter('li.grouped-link-list__link-item a')->each(function(Crawler $node, $i)
+            $logger->info(count($postcode_links)." Postcodes Found");
+
+            $postcode_links->each(function(Crawler $node, $i)
             {
-                global $output, $location, $logger, $sleeping_time, $client, $development,$config;
+                global $output, $location, $logger, $sleeping_time, $client, $development,$config,$retry_waiting_time;
                 
                 $postcode_url  = $node->attr('href');
                 $postcode_name = shorten(preg_replace('/.+,/', '', $node->html()));
@@ -116,8 +102,35 @@
                     $restaurant_count = count($crawler->filter('section.c-listing-item'));
 
                     if ($restaurant_count == 0) {
-                        $logger->debug("No Restaurants Found", $postcode_info);
-                        return;
+                        $logger->debug("No Restaurants Found. Trying Again Shortly.", $postcode_info);
+
+                        #Wait a little longer and try again
+                        sleep($retry_waiting_time);
+
+                        $response = $client->request('GET', $postcode_url,['timeout' => 20]);
+                    
+                        if($response->getStatusCode() != 200){
+                            $logger->error('Failed To Fetch Page. Trying Again');
+    
+                            for($i =0;$i < $config->retry->count;$i++){
+                                $response = $client->request('GET', $postcode_url,['timeout' => 20]);
+    
+                                if($response->getStatusCode() != 200){
+                                    $logger->error('Failed To Fetch Page. Trying Again ...');
+                                }
+                                else {
+                                    $logger->error('Successfully Loaded Page');
+                                }
+                            }
+                        }
+    
+                        $crawler = new Crawler($response->getContent());
+
+                        $restaurant_count = count($crawler->filter('section.c-listing-item'));
+
+                        if ($restaurant_count == 0) {
+                            $logger->debug("Retried. No Postcode Found", $postcode_info);
+                        }
                     }
                     
                     $logger->debug("$restaurant_count Restaurants Found");
@@ -161,7 +174,7 @@
             // print_r($postcodes);
             foreach ($postcodes as $postcode => $data) {
                 
-                $logger->debug("Crawling Postcode $postcode");
+                $logger->info("Crawling Postcode $postcode");
                 
                 $file = $data['file'];
                 
@@ -418,11 +431,11 @@
             $error = $crawler->filter('.c-search__error-text')->count();
             
             if ($error) {
-                $logger->error("Restaurant Has been Deleted");
-                return false;
+                $restaurant->error = "Restaurant Has been Deleted";
+                return $restaurant;
             }
             
-            $logger->debug("Fetching Restaurant Information: $filename");
+            $logger->debug("Fetching Restaurant Information");
             
             $crawler->filter('script')->each(function(Crawler $node, $i)
             {
@@ -509,7 +522,7 @@
                             }
                             
                         } else {
-                            $logger->error('No Hygiene Rating Found For $restaurant->name', array(
+                            $logger->error("No Hygiene Rating Found For $restaurant->name", array(
                                 'url' => $restaurant->url
                             ));
                         }
@@ -568,6 +581,7 @@
                 $restaurant->hours = json_encode($opening_hours);
                 
             } else {
+                $logger->error('No Restaurant Information Found');
                 return false;
             }
             
@@ -911,13 +925,13 @@ END;
             for($i =0;$i < $retry;$i++){
                 $info = $this->restaurant_info($restaurant_file);
                 if($info){
-                    $logger->warning('Restaurant Info Found');
+                    $logger->info('Restaurant Info Found');
                     break;
                 }
                 else {
                     $logger->warning('Retry Restaurant Info, Not Found Yet');
                     sleep($wait);
-                    $this->donwload_page($url);
+                    $restaurant_file = $this->donwload_page($url);
                 }
             }
             
@@ -947,7 +961,7 @@ END;
                     else {
                         $logger->warning('Retry Restaurant Menu Not Found Yet');
                         sleep($wait);
-                        $this->donwload_page($url);
+                        $restaurant_file = $this->donwload_page($url);
                     }
 
                 }
@@ -1070,40 +1084,90 @@ END;
 
             //Fetch Restaurant That haven't been updated in a week.
             // $results  = $database->query("SELECT * FROM restaurant where url like 'https://www.just-eat.co.uk/%' and updated < ( NOW() - INTERVAL 7 DAY )");
-            $results  = $database->query("SELECT * FROM restaurant where url like 'https://www.just-eat.co.uk/%'");
+            $results  = $database->query("SELECT * FROM restaurant where updated is null;");
             
             $restaurant_count = $results->num_rows;
 
             $logger->debug("$restaurant_count Restaurants Require Updates");
 
-
             if($restaurant_count){
                 for($i =0;$i < $restaurant_count;$i++){
                     $row = $results->fetch_assoc();
+
                     $restaurant_url = $row['url'];
                     $restaurant_id  = $row['id'];
                     $restaurant_name = $row['name'];
                     $hygiene_rating = $row['hygiene_rating'];
-                    $restaurant_rating = $row['rating'];
+                    $restaurant_rating = $row['overall_rating'];
+                    $restaurant_num_rating = $row['num_ratings'];
+                    $restaurant_opening_hours = $row['opening_hours'];
+
+                    $logger->debug("------ $restaurant_name($restaurant_id) START -------");
 
                     $restaurant_file = $this->donwload_page($restaurant_url);
-                    // $restaurant_file = 'D:\Ampps\www\justeat\resources\Birmingham\restaurants\restaurants-cafe-aromatico-walsall.html';
+                    // $restaurant_file = './resources/Birmingham/restaurants/restaurants-IndigoBengalFusion-ws9.html';
+                    // $restaurant_file = '/home/ubuntu/justeat/domain/../resources/Birmingham/restaurants/restaurants-IndigoBengalFusion-ws9.html';
 
-                    $info = (object) $this->restaurant_info($restaurant_file);
-                    // print_r($info);
+                    $retry = $config->retry->count;
+                    $wait = $config->retry->wait;
 
-                    $new_hygiene_rating = $info->hygiene_rating ? $info->hygiene_rating : $hygiene_rating;
-                    $new_hours          = $info->hours;
-                    $new_rating         = $info->rating->average;
-                    $new_num_ratings    = $info->rating->num;
+                    for($i =0;$i < $retry;$i++){
+                        $info = $this->restaurant_info($restaurant_file);
 
-                    $logger->debug("Updating $restaurant_name($restaurant_id)\t Hygiene Rating: $hygiene_rating -> $new_hygiene_rating\t Rating: $restaurant_rating -> $new_rating");
+                        if($info){
+
+                            if(property_exists($info, 'error')){
+                                $logger->error($info->error);
+                                break;
+                            }
+                            else {
+                                $logger->info('Restaurant Info Found');
+                                break;
+                            }
+
+                        }
+                        else {
+                            $logger->warning('Retry Restaurant Info, Not Found Yet');
+                            sleep($config->retry->wait);
+                            $restaurant_file = $this->donwload_page($restaurant_url);
+                        }
+                    }
+
+                    if(!$info){
+                        throw new Exception('Failed To Find Restaurant Info');
+                    }
+                    elseif(property_exists($info, 'error')){
+                        $logger->error('Error: Disabling '.$restaurant_name);
+                        $update = $database->query("UPDATE restaurant set active = 0, updated = NOW() where id='$restaurant_id'");
+                        continue;
+                    }
+
+                    $new_hygiene_rating = $info->hygiene_rating ? $info->hygiene_rating : 'NULL';
+                    $new_hours          = $info->hours ? $info->hours : $restaurant_opening_hours;
+                    $new_rating         = $info->rating ? $info->rating : 'NULL';
+                    $new_num_ratings    = $info->num_ratings ? $info->num_ratings : 'NULL';
+
+                    $logger->debug("Updating $restaurant_name($restaurant_id)\t");
+
+                    $logger->debug("Hygiene Rating: $hygiene_rating -> $new_hygiene_rating");
+                    $logger->debug("Rating: $restaurant_rating -> $new_rating");
+                    $logger->debug("Num Rating: $restaurant_num_rating -> $new_num_ratings");
                     
-                    // print("UPDATE restaurant set hygiene_rating='$new_hygiene_rating',opening_hours='$new_hours',rating='$new_rating',num_ratings='$new_num_ratings' where id='$restaurant_id'");
+                    // #ALTER TABLE restaurant CHANGE rating overall_rating decimal(5,2);
+                    // #ALTER TABLE restaurant CHANGE num_rating num_ratings int;
 
-                    $update = $database->query("UPDATE restaurant set hygiene_rating=$new_hygiene_rating,opening_hours='$new_hours',rating=$new_rating,num_ratings=$new_num_ratings where id='$restaurant_id'");
+                    $update_query = "UPDATE restaurant set hygiene_rating=$new_hygiene_rating,opening_hours='$new_hours',overall_rating=$new_rating,num_ratings=$new_num_ratings, updated = NOW() where id='$restaurant_id'";
+                    // $logger->debug($update_query);
 
-                    // sleep($config->retry->wait);
+                    $update = $database->query($update_query);
+                    if(!$update){
+                        throw new Exception('Failed To Update Restaurant');
+                    }
+
+                    $logger->debug("------ $restaurant_name($restaurant_id) END -------");
+
+                    sleep($config->waiting_time->updating);
+
                 }   
             }
 

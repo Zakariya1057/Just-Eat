@@ -119,9 +119,9 @@
     catch (Exception $e) {
         $message = $e->getMessage();
         
-        // if (!isset($current_restaurant)) {
-        //     $current_restaurant = array();
-        // }
+        if (!isset($current_restaurant)) {
+            $current_restaurant = array();
+        }
 
         send_message("Script Error: $message", (array) $current_restaurant);
 
