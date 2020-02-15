@@ -15,6 +15,7 @@
         $logger->debug('--------------------------SCRIPT START-------------------------------');
         
         $current_restaurant;
+        $database = new Database();
         
         // $justeat = new justEat($config);
         // $restaurant = $justeat->page_info(__DIR__."/dev/restaurants/restaurants-caspian-grill-and-pizza-birmingham.html");

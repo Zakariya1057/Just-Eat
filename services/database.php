@@ -8,33 +8,54 @@
         public $connection;
     
         public function __construct(){
-            global $logger,$config;
 
             if($this->connection){
                 return $this->connection;
             }
-
-            if($config->database->environment == 'live'){
-                $database_config = $config->database->live;
-                $logger->debug('Connecting To Live Database');
-            }
             else {
-                $database_config = $config->database->dev;
-                $logger->debug('Connecting To Dev Database('.$database_config->host.')');
-            }
-
-            $this->connection = 'null';
-            $this->connection = new mysqli($database_config->host, $database_config->user, $database_config->pass, $database_config->name);
-            if ($this->connection->connect_error){
-                $logger->critical('Failed To Connect To Database', (array) $database_config);
-                throw new Exception("Failed to connect to database");
-            } 
-            else {
-                return $this->connection;
+                $this->database_connect();
             }
             
         }
     
+        public function database_connect(){
+            global $logger,$config;
+
+            $database_config = $config->database;
+            $environment = $database_config->environment;
+            $credentials = $database_config->$environment;
+
+            if($config->database->environment == 'live'){
+                $logger->debug('Connecting To Live Database('.$credentials->host.')');
+            }
+            else {
+                $logger->debug('Connecting To Dev Database('.$credentials->host.')');
+            }
+
+            $database_error = $database_config->error;
+
+            for($i =0;$i < $database_error->count;$i++){
+
+                $logger->debug('Attempting To Connect To Database');
+
+                $connection = new mysqli($credentials->host, $credentials->user, $credentials->pass, $credentials->name);
+
+                if($connection->connect_error){
+                    $logger->warning('Failed To Connect To Database: '. $connection->connect_error);
+                    $logger->warning('Retrying Shortly...');
+                    sleep($database_error->wait);
+                }
+                else {
+                    $logger->debug('Successfully Connected To Database');
+                    $this->connection = $connection;
+                    return $connection;
+                }
+
+            }
+        
+
+            throw new Exception('Terminating Script. Failed To Connect To Database');
+        }
 
         public function query($sql){
 
