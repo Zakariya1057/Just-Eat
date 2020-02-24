@@ -21,10 +21,12 @@
         public $connection;
         public $config;
         public $development;
+        public $database;
         
-        function __construct($config)
+        function __construct($config,$database)
         {
             $this->config      = $config;
+            $this->database    = $database;
             $this->development = $config->development;
         }
         
@@ -168,18 +170,14 @@
         {
             
             global $database, $output, $logger;
-            $database = new Database();
+            $database = $this->database;
             $output   = array();
             
-            // print_r($postcodes);
             foreach ($postcodes as $postcode => $data) {
                 
-                $logger->info("Crawling Postcode $postcode");
-                
                 $file = $data['file'];
-                
-                // $file = __DIR__."resources/postcodes/$postcode";
-                /////////////////////////////////////
+
+                $logger->info("Crawling Postcode $postcode",$data);
                 
                 if (file_exists($file)) {
                     
@@ -196,27 +194,28 @@
                     {
                         global $database, $output, $logger;
                         
-                        preg_match('/halal/i', $node->filter('p[itemprop]')->eq(0)->attr('data-cuisine-names'), $matches);
                         $restaurant_name = $node->filter('h3[data-test-id].c-listing-item-title')->eq(0)->text();
-                        
-                        if (!$matches) {
-                            $logger->debug("Restaurant Not Halal Skipping, $restaurant_name");
-                            return;
-                        }
-                        
                         $online_id = $node->attr('data-restaurant-id');
                         $url       = 'https://www.just-eat.co.uk' . $node->filter('a.c-listing-item-link')->eq(0)->attr('href');
+
+                        $logger->debug("Restaurant Name: $restaurant_name ($url)");
+
+                        preg_match('/halal/i', $node->filter('p[data-cuisine-names]')->eq(0)->attr('data-cuisine-names'), $matches);
+
+                        if (!$matches) {
+                            $logger->debug("Restaurant Not Halal Skipping");
+                            return;
+                        }
                         
                         if (!array_key_exists($url, $output)) {
                             
                             $result = $database->query("select * from restaurant where online_id='$online_id'");
                             
                             if ($result->num_rows) {
-                                $logger->debug("Restaurant Already Exists $restaurant_name Skipping, $url");
+                                $logger->debug("Exists In Database");
                                 //Update or Skip
-                                // echo "Found";
                             } else {
-                                $logger->debug("New Halal Restaurant $restaurant_name, $url");
+                                $logger->info("New Halal Restaurant Found");
                                 $output[$url] = 1;
                             }
                             
@@ -534,7 +533,7 @@
                 $restaurant->hygiene_rating = $hygiene_rating;
                 
                 $restaurant->location   = $information->geo;
-                $restaurant->categories = str_replace('|', ', ', htmlentities($information->cuisines,ENT_QUOTES));
+                $restaurant->categories = str_replace('|', ', ', $information->cuisines);
                 
                 $opening_hours = array();
                 
@@ -761,7 +760,7 @@ END;
         {
             
             global $database, $logger;
-            $database      = new Database();
+            $database      = $this->database;
             $connection    = $database->connection;
             $restaurant_id = $this->restaurant_id;
             
@@ -808,7 +807,7 @@ END;
         {
             
             global $database, $logger, $config;
-            $database = new Database();
+            $database = $this->database;
             
             $user_id        = $config->user_id;
             $name           = $restaurant->name;
@@ -837,8 +836,8 @@ END;
             
             $logger->debug('Hygiene Rating: ' . $hygiene_rating);
             
-            $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating) 
-        values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating)");
+            $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating,overall_rating,num_ratings) 
+        values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating,$rating,$num_ratings)");
 
         //     $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating,rating,num_ratings) 
         // values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating,$rating,$num_ratings)");
@@ -1009,7 +1008,7 @@ END;
         public function exists($url)
         {
             global $database, $logger;
-            $database = new Database();
+            $database = $this->database;
             
             $logger->debug("Checking If Present Already $url");
             
@@ -1033,7 +1032,7 @@ END;
             
             global $logger;
             
-            $database = new Database;
+            $database = $this->database;
             $result   = $database->query("SELECT * from restaurant where url='$url'");
             
             if ($result->num_rows) {
@@ -1080,7 +1079,7 @@ END;
         public function update_restaurants(){
             global $database,$logger,$config;
 
-            $database = new Database();
+            $database = $this->database;
 
             //Fetch Restaurant That haven't been updated in a week.
             // $results  = $database->query("SELECT * FROM restaurant where url like 'https://www.just-eat.co.uk/%' and updated < ( NOW() - INTERVAL 7 DAY )");
