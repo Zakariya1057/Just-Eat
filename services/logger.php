@@ -11,7 +11,12 @@ global $logger;
 
 $logger = new Logger('logger');
 
-$logs_directory = $config->directories->logs;
+$date = date('d-m-Y');
+
+$logs_directory = __DIR__."/../logs/$date";
+if(!file_exists($logs_directory)){
+    mkdir($logs_directory);
+}
 
 if($config->stdout){
     $logger->pushHandler(new StreamHandler('php://stdout', Logger::DEBUG));
