@@ -19,6 +19,9 @@
         
         $logger->debug("Creating Directories For $city");
 
+        $logs_directory = __DIR__ . "/../logs/$site";
+        new_directory($logs_directory);
+
         $site_directory = __DIR__ . "/../resources/$site";
         new_directory($site_directory);
 
@@ -31,15 +34,27 @@
         $restaurant_directory = $city_directory . "/restaurants";
         new_directory($restaurant_directory);
 
+        $hygiene_directory = $city_directory . "/hygiene";
+        new_directory($hygiene_directory);
+
+        $sitemap_directory = __DIR__ . "/../resources/deliveroo/sitemap";
+        new_directory($sitemap_directory);
+
+        $debug_directory =  $city_directory . "/debug";
+        new_directory($debug_directory);
+
         $logo_directory = $city_directory . "/logos";
         new_directory($logo_directory);
 
         $directories = new data();
         
         // $directories->logs = $logs_directory;
-        $directories->restaurants = "$city_directory/restaurants";
-        $directories->logos = "$city_directory/logos";
-        $directories->postcodes = "$city_directory/postcodes";
+        $directories->restaurants = $restaurant_directory;
+        $directories->logos = $logo_directory;
+        $directories->postcodes =  $postcode_directory;
+        $directories->hygiene = $hygiene_directory;
+        $directories->sitemap = $sitemap_directory;
+        $directories->debug = $debug_directory;
         
         $config->directories = $directories;
         $config->list_file =  __DIR__ . "/../list/$city.json";
