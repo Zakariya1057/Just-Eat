@@ -1,6 +1,6 @@
 <?php
 
-function shorten($string){
+function sanitize($string){
 
     $string = trim(str_replace('<br><br>','<br>',$string));
     // $output =  trim(preg_replace("/\s+/", " ", str_replace('<br>','\n',$string)));
