@@ -20,7 +20,7 @@
     
         public function database_connect(){
             global $logger,$config;
-
+            
             $database_config = $config->database;
             $environment = $database_config->environment;
             $credentials = $database_config->$environment;
@@ -46,7 +46,7 @@
                     sleep($database_error->wait);
                 }
                 else {
-                    $logger->debug('Successfully Connected To Database');
+                    $logger->info('Successfully Connected To Database');
                     $this->connection = $connection;
                     return $connection;
                 }
@@ -57,10 +57,9 @@
             throw new Exception('Terminating Script. Failed To Connect To Database');
         }
 
-        public function query($sql){
+        public function database_query($sql){
 
-            global $logger;
-            
+            global $logger,$config;
             $results = $this->connection->query($sql);
 
             if($results){ 
