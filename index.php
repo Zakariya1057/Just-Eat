@@ -56,7 +56,7 @@
                 $config->city = $city;
                 $config->county = $county;
 
-                $logger->notice("\n--------- New Location $city ($county) Start ---------\n");
+                $logger->notice("\n--------- $city ($county) Start ---------\n");
 
                 create_directories($config,$city);
 
@@ -119,7 +119,7 @@
 
                         }
 
-                        $logger->debug('Successfully Completed Scraping Of All Restaurants');
+                        $logger->debug('Restaurant List Completed');
 
                     } else {
                         $logger->debug("No New Restaurants Found");
@@ -132,7 +132,7 @@
                     $justeat->update_restaurants();
                 }
 
-                $logger->notice("\n--------- New Location $city ($county) Completed ---------\n");
+                $logger->notice("\n--------- $city ($county) Completed ---------\n");
             }
 
         }
@@ -149,7 +149,7 @@
                 $config->city = $city;
                 $config->county = $county;
 
-                $logger->notice("\n--------- New Location $city ($county) Start ---------\n");
+                $logger->notice("\n--------- $city ($county) Start ---------\n");
 
                 create_directories($config,$city);
 
@@ -187,15 +187,14 @@
 
                 $logger->notice('Deliveroo Scraping Complete');
 
-                $logger->notice("\n--------------------- New Location $city ($county) Completed ---------------------\n");
+                $logger->notice("\n--------------------- $city ($county) Completed ---------------------\n");
 
             }
 
         }
 
         
-        archive_resources(__DIR__."/resources/$target_site",__DIR__.'/archive');
-
+        // archive_resources(__DIR__."/resources/$target_site",__DIR__.'/archive');
         // archive_resources(__DIR__."/logs/$target_site",__DIR__.'/archive');
 
     }
