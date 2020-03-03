@@ -12,6 +12,7 @@
             global $config,$logger;
 
             $email_config = $config->email->configuration;
+            $site = $config->site;
 
             $mail = new PHPMailer(true);
 
@@ -33,7 +34,7 @@
         
                 // Content
                 $mail->isHTML(true);   
-                $mail->addAttachment( __DIR__."/../logs/$config->city/$date/debug.log");                                 // Set email format to HTML
+                $mail->addAttachment( __DIR__."/../logs/$site/$date/debug.log");                                 // Set email format to HTML
 
                 $mail->Subject = $config->email->subject;
                 $mail->Body    = $message;
