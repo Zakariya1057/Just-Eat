@@ -42,8 +42,8 @@
             
             $output = array();
             
-            $location = __DIR__ . "/../resources/$city/postcodes";
-            
+            // $location = __DIR__ . "/../resources/$city/postcodes";
+            $location = $config->directories->postcodes;
             
             $logger->info('Fetching PostCode List From '.$url);
 
@@ -65,7 +65,7 @@
                 global $output, $location, $logger, $sleeping_time, $client, $development,$config,$retry_waiting_time;
                 
                 $postcode_url  = $node->attr('href');
-                $postcode_name = shorten(preg_replace('/.+,/', '', $node->html()));
+                $postcode_name = sanitize(preg_replace('/.+,/', '', $node->html()));
                 
                 $postcode_saving_location = $location . "/$postcode_name.html";
                 
@@ -209,7 +209,7 @@
                         
                         if (!array_key_exists($url, $output)) {
                             
-                            $result = $database->query("select * from restaurant where online_id='$online_id'");
+                            $result = $database->database_query("select * from restaurant where online_id='$online_id'");
                             
                             if ($result->num_rows) {
                                 $logger->debug("Exists In Database");
@@ -265,7 +265,7 @@
                     $node->filter('h3')->each(function(Crawler $node, $i)
                     {
                         global $category, $logger;
-                        $category_name  = shorten($node->html());
+                        $category_name  = sanitize($node->html());
                         $category->name = $category_name;
                         // $logger->debug("Category: $category_name");
                     });
@@ -275,7 +275,7 @@
                         $node->filter('.categoryDescription')->each(function(Crawler $node, $i)
                         {
                             global $category;
-                            $category->description = shorten($node->html(), false);
+                            $category->description = sanitize($node->html(), false);
                         });
                         
                     } else {
@@ -306,14 +306,14 @@
                                     $node->filter('.name')->each(function(Crawler $node, $i)
                                     {
                                         global $food;
-                                        $food->name = shorten($node->html());
+                                        $food->name = sanitize($node->html());
                                     });
                                     
                                     if ($node->filter('.description')->count() !== 0) {
                                         $node->filter('.description')->each(function(Crawler $node, $i)
                                         {
                                             global $food;
-                                            $food->description = shorten($node->html(), false);
+                                            $food->description = sanitize($node->html(), false);
                                         });
                                     } else {
                                         global $food;
@@ -332,13 +332,13 @@
                                     $node->filter('.synonymName')->each(function(Crawler $node, $i)
                                     {
                                         global $subfood;
-                                        $subfood->name = shorten($node->html());
+                                        $subfood->name = sanitize($node->html());
                                     });
                                     
                                     $node->filter('.price')->each(function(Crawler $node, $i)
                                     {
                                         global $subfood;
-                                        $subfood->price = shorten(str_replace('£', '', $node->html()));
+                                        $subfood->price = sanitize(str_replace('£', '', $node->html()));
                                     });
                                     
                                     $food->options[] = $subfood;
@@ -362,14 +362,14 @@
                                     $node->filter('.name')->each(function(Crawler $node, $i)
                                     {
                                         global $food;
-                                        $food->name = shorten(($node->html()));
+                                        $food->name = sanitize(($node->html()));
                                     });
                                     
                                     if ($node->filter('.description')->count() !== 0) {
                                         $node->filter('.description')->each(function(Crawler $node, $i)
                                         {
                                             global $food;
-                                            $food->description = shorten($node->html());
+                                            $food->description = sanitize($node->html());
                                         });
                                     } else {
                                         global $food;
@@ -382,7 +382,7 @@
                                 $node->filter('.price')->each(function(Crawler $node, $i)
                                 {
                                     global $food;
-                                    $food->price = shorten(str_replace('£', '', $node->html()));
+                                    $food->price = sanitize(str_replace('£', '', $node->html()));
                                 });
                                 
                                 $category->foods[] = $food;
@@ -459,7 +459,7 @@
                 $restaurant->url = $information->menuurl;
 
                 // print_r($information);
-                $restaurant->name = shorten($information->name);
+                $restaurant->name = sanitize($information->name);
                 
                 if($information->rating){
                     // $rating = new data();
@@ -473,15 +473,15 @@
 
 
                 if ($information->address) {
-                    $restaurant->address1        = shorten($information->address->streetAddress);
+                    $restaurant->address1        = sanitize($information->address->streetAddress);
                     $restaurant->address2        = '';
                     $restaurant->address3        = '';
-                    $restaurant->city            = shorten($information->address->addressLocality);
-                    $restaurant->address_country = shorten($information->address->addressCountry);
-                    $restaurant->postcode        = shorten($information->address->postalCode);
+                    $restaurant->city            = sanitize($information->address->addressLocality);
+                    $restaurant->address_country = sanitize($information->address->addressCountry);
+                    $restaurant->postcode        = sanitize($information->address->postalCode);
                     
-                    $restaurant->country = shorten($config->country);
-                    $restaurant->county  = shorten($config->county);
+                    $restaurant->country = sanitize($config->country);
+                    $restaurant->county  = sanitize($config->county);
                 }
                 
                 preg_match('/(.+?)\s-\s[A-Z].+/i', $restaurant->name, $matches1);
@@ -588,174 +588,6 @@
             
         }
         
-        //Not In Use Anymore
-        public function info($url)
-        {
-            
-            global $restaurant, $logger, $config, $information;
-            $config = $this->config;
-            
-            $restaurant = new data();
-            
-            if ($config->development) {
-                $crawler = new Crawler(file_get_contents($url));
-            } else {
-                throw new Exception('Live');
-                
-                $client  = new Client();
-                $crawler = $client->request('GET', $url);
-                $html    = $crawler->html();
-                
-            }
-            
-            $restaurant->url = $url;
-            
-            $error = $crawler->filter('.c-search__error-text')->count();
-            
-            if ($error) {
-                $logger->error("$url doesn't really exist");
-                return false;
-            }
-            
-            $logger->debug("Fetching info,$url");
-            
-            if (!$config->development) {
-                preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)/', $url, $matches);
-                file_put_contents(__DIR__ . '/../resources/restaurants/' . $matches[1] . "_info.html", $html);
-            }
-            
-            $crawler->filter('script')->each(function(Crawler $node, $i)
-            {
-                global $information;
-                $script = $node->html();
-                preg_match('/^\s*dataLayer\.push\((.+)\);/', $script, $matches);
-                
-                if ($matches) {
-                    $decoded = json_decode($matches[1]);
-                    
-                    if ($decoded->trData) {
-                        $information = $decoded->trData;
-                    }
-                    
-                }
-                
-            });
-            
-            $crawler->filter('.restaurantOverview ')->each(function(Crawler $node, $i)
-            {
-                
-                global $restaurant;
-                
-                $node->filter('h1')->each(function(Crawler $node, $i)
-                {
-                    global $restaurant, $logger;
-                    $restaurant->name = shorten($node->html());
-                    $logger->notice("New Restaurant: " . $restaurant->name);
-                });
-                
-                $restaurant->online_id = $node->attr('data-restaurant-id');
-                
-                $node->filter('.cuisines')->each(function(Crawler $node, $i)
-                {
-                    
-                    global $restaurant;
-                    $restaurant->categories = shorten($node->html());
-                    
-                });
-                
-                $node->filter('.address')->each(function(Crawler $node, $i)
-                {
-                    global $config;
-                    
-                    $location = explode(",", shorten($node->html()));
-                    $length   = count($location);
-                    
-                    global $restaurant;
-                    
-                    switch ($length) {
-                        case $length === 3:
-                            $restaurant->address1 = shorten($location[0]);
-                            $restaurant->address2 = '';
-                            $restaurant->address3 = '';
-                            $restaurant->postcode = shorten($location[2]);
-                            $restaurant->city     = shorten($location[1]);
-                            break;
-                        
-                        case $length === 4:
-                            $restaurant->address1 = shorten($location[0]);
-                            $restaurant->address2 = shorten($location[1]);
-                            $restaurant->address3 = '';
-                            $restaurant->postcode = shorten($location[3]);
-                            $restaurant->city     = shorten($location[2]);
-                            break;
-                        
-                        case $length === 5:
-                            $restaurant->address1 = shorten($location[2]);
-                            $restaurant->address2 = shorten($location[0]);
-                            $restaurant->address3 = shorten($location[1]);
-                            
-                            $restaurant->postcode = shorten($location[4]);
-                            $restaurant->city     = shorten($location[3]);
-                            break;
-                    }
-                    
-                    $restaurant->address = $restaurant->address1 . "," . $restaurant->address2 . "," . $restaurant->address3;
-                    $restaurant->country = $config->country;
-                    $restaurant->county  = $config->county;
-                    
-                });
-                
-            });
-            
-            $crawler->filter('.restaurantMenuDescription')->each(function(Crawler $node, $i)
-            {
-                global $restaurant;
-                $restaurant->description = shorten($node->html());
-            });
-            
-            $crawler->filter('.restaurantOpeningHours table')->each(function(Crawler $node, $i)
-            {
-                
-                global $restaurant;
-                
-                $restaurant->hours = '[';
-                
-                $node->filter('tr')->each(function(Crawler $node, $i)
-                {
-                    global $restaurant;
-                    
-                    $day  = $node->filter('td')->eq(0)->text();
-                    $time = $node->filter('td')->eq(1)->text();
-                    
-                    $hours = explode(' - ', $time);
-                    
-                    $open  = $hours[0];
-                    $close = $hours[1];
-                    
-                    $restaurant->hours .= <<<END
-{
-"day": "$day",
-"open": "$open",
-"close": "$close"
-},
-END;
-                    
-                });
-                
-                $restaurant->hours .= ']';
-                
-                $restaurant->hours = shorten(str_replace(',]', ']', $restaurant->hours));
-                
-            });
-            
-            $place                = places($restaurant);
-            $restaurant->hours    = $place->opening_hours;
-            $restaurant->location = $place->location;
-            
-            return $restaurant;
-            
-        }
-        
         public function insert_menu($categories)
         {
             
@@ -768,7 +600,7 @@ END;
                 $catName        = $category->name;
                 $catDescription = $category->description;
                 
-                $database->query("INSERT INTO category (name, description) VALUES ('$catName', '$catDescription')");
+                $database->database_query("INSERT INTO category (name, description) VALUES ('$catName', '$catDescription')");
                 $catId = $connection->insert_id;
                 
                 $logger->debug("Inserting Category $catName");
@@ -781,7 +613,7 @@ END;
                         $foodPrice = $food->price;
                     }
                     
-                    $database->query("INSERT INTO food (name, description,price,num_ratings,overall_rating,restaurant_id,category_id) 
+                    $database->database_query("INSERT INTO food (name, description,price,num_ratings,overall_rating,restaurant_id,category_id) 
                 VALUES ('$foodName','$foodDescription','$foodPrice','0',null,'$restaurant_id','$catId')");
                     
                     $foodId = $connection->insert_id;
@@ -792,7 +624,7 @@ END;
                             $optionName  = $option->name;
                             $optionPrice = $option->price;
                             
-                            $database->query("INSERT into sub_category(name,price,food_id) values('$optionName','$optionPrice','$foodId')");
+                            $database->database_query("INSERT into sub_category(name,price,food_id) values('$optionName','$optionPrice','$foodId')");
                             
                         }
                         
@@ -836,10 +668,10 @@ END;
             
             $logger->debug('Hygiene Rating: ' . $hygiene_rating);
             
-            $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating,overall_rating,num_ratings) 
+            $database->database_query("insert into restaurant(name,opening_hours,cuisines,user_id,online_id,url,hygiene_rating,overall_rating,num_ratings) 
         values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating,$rating,$num_ratings)");
 
-        //     $database->query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating,rating,num_ratings) 
+        //     $database->database_query("insert into restaurant(name,opening_hours,categories,user_id,online_id,url,hygiene_rating,rating,num_ratings) 
         // values('$name','$hours','$categories','$user_id','$online_id','$url',$hygiene_rating,$rating,$num_ratings)");
             
             $restaurant_id = $database->connection->insert_id;
@@ -858,7 +690,7 @@ END;
             
             $this->restaurant_id = $restaurant_id;
             
-            $database->query("insert into location (address_line1,address_line2,address_line3,postcode,city,county,country,restaurant_id,longitude,latitude) 
+            $database->database_query("insert into location (address_line1,address_line2,address_line3,postcode,city,county,country,restaurant_id,longitude,latitude) 
         values ('$address1','$address2','$address3','$postcode','$city','$county','$country','$restaurant_id',$longitude,$latitude)");
             
             $logger->debug("Successfully Inserted Restaurant Location");
@@ -867,7 +699,7 @@ END;
         
         public function donwload_page($url){
 
-            global $config,$logger;
+            global $logger;
 
             $city = $this->config->city;
             
@@ -882,9 +714,9 @@ END;
             }
 
             $restaurant_name = $matches[1];
-            $restaurant_file = __DIR__ . "/../resources/$city/restaurants/$restaurant_name.html";
-            //IF captcha page then wait for a few seconds and try again
+            $restaurant_file = $this->config->directories->restaurants . "/$restaurant_name.html";
 
+            //IF captcha page then wait for a few seconds and try again
             if(is_nan(stripos($html,'<script src="/_Incapsula_Resource?'))){
                 $logger->error('Captcha Page Found. Trying Again');
             }
@@ -1014,7 +846,7 @@ END;
             
             $duplicate = false;
             
-            $results = $database->query("select * from restaurant where url='$url'");
+            $results = $database->database_query("select * from restaurant where url='$url'");
             if ($results->num_rows != 0) {
                 $logger->error("Duplicate Restaurant");
                 $duplicate = true;
@@ -1033,7 +865,7 @@ END;
             global $logger;
             
             $database = $this->database;
-            $result   = $database->query("SELECT * from restaurant where url='$url'");
+            $result   = $database->database_query("SELECT * from restaurant where url='$url'");
             
             if ($result->num_rows) {
                 $logger->notice('Restaurant Found In Database, Deleting It', array(
@@ -1043,34 +875,34 @@ END;
                 $row           = $result->fetch_assoc();
                 $restaurant_id = $row['id'];
                 
-                $database->query("DELETE FROM location where restaurant_id='$restaurant_id'");
-                $database->query("ALTER TABLE location AUTO_INCREMENT = 1");
+                $database->database_query("DELETE FROM location where restaurant_id='$restaurant_id'");
+                $database->database_query("ALTER TABLE location AUTO_INCREMENT = 1");
                 
-                $subresults = $database->query("SELECT * from food where restaurant_id='$restaurant_id' order by id asc limit 1");
+                $subresults = $database->database_query("SELECT * from food where restaurant_id='$restaurant_id' order by id asc limit 1");
                 if ($subresults->num_rows) {
                     $subrow      = $subresults->fetch_assoc();
                     $food_id     = $subrow['id'];
                     $category_id = $subrow['category_id'];
                     
-                    $database->query("DELETE from sub_category where food_id >= '$food_id'");
-                    $database->query("ALTER TABLE sub_category AUTO_INCREMENT = 1");
+                    $database->database_query("DELETE from sub_category where food_id >= '$food_id'");
+                    $database->database_query("ALTER TABLE sub_category AUTO_INCREMENT = 1");
                     
-                    $database->query("DELETE from food where restaurant_id='$restaurant_id'");
-                    $database->query("ALTER TABLE food AUTO_INCREMENT = 1");
+                    $database->database_query("DELETE from food where restaurant_id='$restaurant_id'");
+                    $database->database_query("ALTER TABLE food AUTO_INCREMENT = 1");
                     
-                    $database->query("DELETE from category where id >= '$category_id'");
-                    $database->query("ALTER TABLE category AUTO_INCREMENT = 1");
+                    $database->database_query("DELETE from category where id >= '$category_id'");
+                    $database->database_query("ALTER TABLE category AUTO_INCREMENT = 1");
                     
                 } else {
                     //Failed on category,Delete last one
-                    $database->query("delete ignore from category order by id desc limit 1");
-                    $database->query("ALTER TABLE category AUTO_INCREMENT = 1");
+                    $database->database_query("delete ignore from category order by id desc limit 1");
+                    $database->database_query("ALTER TABLE category AUTO_INCREMENT = 1");
                 }
                 
                 
                 //Failed to inserting location, no food or categories present
-                $database->query("DELETE FROM restaurant where id='$restaurant_id'");
-                $database->query("ALTER TABLE restaurant AUTO_INCREMENT = 1");
+                $database->database_query("DELETE FROM restaurant where id='$restaurant_id'");
+                $database->database_query("ALTER TABLE restaurant AUTO_INCREMENT = 1");
                 
             }
             
@@ -1082,8 +914,8 @@ END;
             $database = $this->database;
 
             //Fetch Restaurant That haven't been updated in a week.
-            // $results  = $database->query("SELECT * FROM restaurant where url like 'https://www.just-eat.co.uk/%' and updated < ( NOW() - INTERVAL 7 DAY )");
-            $results  = $database->query("SELECT * FROM restaurant where updated is null;");
+            // $results  = $database->database_query("SELECT * FROM restaurant where url like 'https://www.just-eat.co.uk/%' and updated < ( NOW() - INTERVAL 7 DAY )");
+            $results  = $database->database_query("SELECT * FROM restaurant where updated is null;");
             
             $restaurant_count = $results->num_rows;
 
@@ -1137,7 +969,7 @@ END;
                     }
                     elseif(property_exists($info, 'error')){
                         $logger->error('Error: Disabling '.$restaurant_name);
-                        $update = $database->query("UPDATE restaurant set active = 0, updated = NOW() where id='$restaurant_id'");
+                        $update = $database->database_query("UPDATE restaurant set active = 0, updated = NOW() where id='$restaurant_id'");
                         continue;
                     }
 
@@ -1155,10 +987,10 @@ END;
                     // #ALTER TABLE restaurant CHANGE rating overall_rating decimal(5,2);
                     // #ALTER TABLE restaurant CHANGE num_rating num_ratings int;
 
-                    $update_query = "UPDATE restaurant set hygiene_rating=$new_hygiene_rating,opening_hours='$new_hours',overall_rating=$new_rating,num_ratings=$new_num_ratings, updated = NOW() where id='$restaurant_id'";
-                    // $logger->debug($update_query);
+                    $update_database_query = "UPDATE restaurant set hygiene_rating=$new_hygiene_rating,opening_hours='$new_hours',overall_rating=$new_rating,num_ratings=$new_num_ratings, updated = NOW() where id='$restaurant_id'";
+                    // $logger->debug($update_database_query);
 
-                    $update = $database->query($update_query);
+                    $update = $database->database_query($update_database_query);
                     if(!$update){
                         throw new Exception('Failed To Update Restaurant');
                     }
