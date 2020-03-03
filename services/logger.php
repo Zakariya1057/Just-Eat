@@ -12,8 +12,9 @@ global $logger;
 $logger = new Logger('logger');
 
 $date = date('d-m-Y');
+$site = $config->site;
 
-$logs_directory = __DIR__."/../logs/$date";
+$logs_directory = __DIR__."/../logs/$site/$date";
 if(!file_exists($logs_directory)){
     mkdir($logs_directory);
 }
