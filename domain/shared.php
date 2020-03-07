@@ -4,6 +4,7 @@ require_once __DIR__ . '/../services/logger.php';
 
 use Goutte\Client;
 use Symfony\Component\DomCrawler\Crawler;
+use \Symfony\Component\HttpClient\HttpClient;
 
 class Shared {
 
@@ -20,8 +21,18 @@ class Shared {
     }
 
     public function crawl_page($file){
+        global $logger;
+
         $html    = file_get_contents($file);
-        $crawler = new Crawler($html);
+
+        try {
+            $crawler = new Crawler($html);
+        }
+        catch (Exception $e) {
+            $message = $e->getMessage();
+            $crawler = new Crawler($html);
+            $logger->error($message);
+        }
 
         return $crawler;
     }
@@ -137,6 +148,7 @@ class Shared {
         $cuisines       = sanitize($restaurant->cuisines);
         $online_id      = sanitize($restaurant->online_id);
         $hygiene_rating = sanitize($restaurant->hygiene_rating);
+        $site = sanitize($restaurant->site);
         
         $address1 = sanitize($location->address1);
         $address2 = sanitize($location->address2);
@@ -161,8 +173,8 @@ class Shared {
         
         $logger->debug('Hygiene Rating: ' . $hygiene_rating);
         
-        $database->database_query("INSERT into restaurant(name,opening_hours,cuisines,user_id,online_id,url,hygiene_rating,description,overall_rating,num_ratings) 
-        values('$name','$hours','$cuisines','$user_id','$online_id','$url',$hygiene_rating,'$description',$rating,$num_ratings)");
+        $database->database_query("INSERT into restaurant(name,opening_hours,cuisines,user_id,online_id,url,hygiene_rating,description,overall_rating,num_ratings,site) 
+        values('$name','$hours','$cuisines','$user_id','$online_id','$url',$hygiene_rating,'$description',$rating,$num_ratings,'$site')");
 
         
         $restaurant_id = $database->connection->insert_id;
@@ -266,6 +278,113 @@ class Shared {
         }
     }
 
+    public function cross_search($restaurant){
+        global $logger;
+
+        if(!property_exists($restaurant,'location')){
+            throw new Exception('No Restaurant Location Found.');
+        }
+
+        $location = $restaurant->location;
+
+        $name = sanitize($restaurant->name);
+        $address1 = sanitize($location->address1);
+        $postcode = str_replace(' ','',$location->postcode);
+        
+        $restaurant_found = false;
+        $filter_results = false;
+
+        preg_match('/(\w+)/',$name,$matches);
+        if(!$matches){
+            throw new Exception('No Restaurant Name Found: '. $name);
+        }
+
+        preg_match('/\w*\s*([^,\d]+)\s*,*/',$address1,$address_matches);
+        if(!$address_matches){
+            throw new Exception('Restaurant Address Invalid: '. $address1);
+        }
+
+        $possible_name = $matches[1];
+        $short_address = $address_matches[1];
+
+        $results = $this->database->database_query("SELECT * FROM restaurant inner join location on location.restaurant_id = restaurant.id where ( name like '%$name%' or name like '$possible_name%' ) and ( location.address_line1='$address1' or REPLACE(location.postcode,' ','') ='$postcode' )");
+
+        if($results->num_rows){
+        
+            if($results->num_rows > 1){
+                // throw new Exception('Too Many Restaurants Match Description');
+                $logger->warning('Too Many Restaurants Match Description');
+                $filter_results = true;
+            }
+            else {
+                $restaurant_found = true;
+            }
+
+        }
+        else {
+            $logger->warning('No Restaurant Matched. Trying Postcode Search With Similar Names');
+            $results = $this->database->database_query("SELECT * FROM restaurant inner join location on location.restaurant_id = restaurant.id where (name like '$possible_name%' and location.address_line1 like '%$short_address%' ) or ( location.address_line1='$address1' or REPLACE(location.postcode,' ','') ='$postcode' )");
+            $filter_results = true;
+        }
+
+        if($filter_results){
+
+            $logger->debug($results->num_rows . ' Possible Matches');
+
+            $logger->debug('Finding '.$name);
+
+            for($i = 0;$i < $results->num_rows;$i++){
+                $row = $results->fetch_assoc();
+                $result_name = $row['name'];
+
+                similar_text($row['name'], $name, $similarity);
+                similar_text($row['name'], $possible_name, $similarity1);
+
+                $logger->debug($row['name'] ." === ". $name . " Or ".$possible_name);
+
+                preg_match("/$possible_name/i",$result_name, $matches);
+
+                preg_match("/".$row['address_line1']."/i",$address1, $address_matches1);
+                preg_match("/$address1/i",$row['address_line1'], $address_matches2);
+
+                if($similarity > 60 || $similarity1 > 60 || $matches || ( ($address_matches || $address_matches2) && str_replace(' ','',$row['postcode']) == str_replace(' ','',$postcode) )){
+                    $logger->debug('Single Restaurant Match Found In Database. '.$row['name'] .' == '. $name);
+                    $restaurant_found = true;
+                    break;
+                }
+
+            }
+        }
+
+
+        if($restaurant_found){
+            $logger->debug("$name Exist");
+        }
+        else {
+            $logger->debug("$name New");
+        }
+        
+        return $restaurant_found;
+
+    }
+
+    public function parse_name($name,$city){
+
+        $name = trim( preg_replace("/\s?$city\s?/i",' ',$name));
+    
+        preg_match('/(^.+?)\s?\(.+\)/',$name,$bracket_matches); #name like '%(%'
+        if($bracket_matches){
+            $name = $bracket_matches[1];
+        }
+    
+        preg_match('/(.+?)\s-\s?[A-Z]?/',$name,$dash_matches); #name like '%-%'
+        if($dash_matches){
+            $name = $dash_matches[1];
+        }
+    
+        return trim($name);
+    }
+
     public function restaurant_hygiene($hygiene_url){
         global $logger;
 
@@ -289,33 +408,197 @@ class Shared {
         $file = $this->download_page($hygiene_url,$location);
         $crawler = $this->crawl_page($file);
 
-        $image = $crawler->filter('.badge.ratingkey img[src][alt]')->eq(0);
-        if(!$image){
-            $logger->debug('No Hygiene Rating');
-            return $hygiene_rating;
-        }
+        $image = null;
 
-        $image_description = $image->attr('alt');
-        
-        preg_match('/\'(\d)\':/',$image_description,$matches);
+        try {
+            
+            $image = $crawler->filter('.badge.ratingkey img[src][alt]')->eq(0);
+            $image_description = $image->attr('alt');
 
-        if(!$matches){
+            preg_match('/\'(\d)\':/',$image_description,$matches);
 
-            if(strtolower($image_description) == 'awaiting inspection'){
-                $logger->debug('Awaiting Inspection');
-                return $hygiene_rating;
+            if(!$matches){
+    
+                if(strtolower($image_description) == 'awaiting inspection'){
+                    $logger->debug('Awaiting Inspection');
+                    return $hygiene_rating;
+                }
+    
+                throw new Exception('Invalid Image Description: '.$image_description);
+            }
+            else {
+                $hygiene_rating = $matches[1];
+                $logger->debug("Hygiene Rating Scraped: $hygiene_rating");
             }
 
-            throw new Exception('Invalid Image Description: '.$image_description);
         }
-        else {
-            $hygiene_rating = $matches[1];
-            $logger->debug("Hygiene Rating Scraped: $hygiene_rating");
+        catch (Exception $e) {
+            $logger->error('Hygiene Rating Scrape Error: '.$e->getMessage());
+        }
+
+        if(!$hygiene_rating){
+            $logger->debug('No Hygiene Rating');
         }
 
         return $hygiene_rating;
 
     }
+
+    public function generate_list($new_restaurants){
+
+        global $logger;
+        $city = $this->config->city;
+        
+        $logger->debug("Generating $city List Found");
+
+        $new_restaurants = array_unique($new_restaurants);
+
+        $count = count($new_restaurants);
+        
+        $destination = $this->config->directories->list;
+        $list = json_encode($new_restaurants);
+        file_put_contents("$destination/$city.json", $list);
+
+    }
+
+    public function places($restaurant){
+
+        global $config,$logger;
+        
+        $client = HttpClient::create();
+
+        $name = $restaurant->name;
+        $location = $restaurant->location;
+
+        $address  = $location->address1;
+        $postcode = $location->postcode;
+        $city     = $location->city;
+
+        $api_key = $config->google->api_key;
+
+        //Get Place Id and use that to get details
+        $format_address = str_replace(' ','+',"$name,$address,$postcode,$city");
+        
+        $search_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=$format_address&inputtype=textquery&key=".$api_key;
+        $logger->debug('Search URL: '.$search_url);
+
+        $place_id_response = $client->request('GET', $search_url);
+        $statusCode = $place_id_response->getStatusCode();
+
+        $content = json_decode($place_id_response->getContent());
+
+        if (strtolower($content->status) == 'ok') {
+
+            $place_id = $content->candidates[0]->place_id;
+
+            $logger->debug("Place Found For $name($address)");
+
+        }
+        else {
+            $logger->error('Place Not Found For '.$name);
+            return false;
+        }
+
+        $place_url = "https://maps.googleapis.com/maps/api/place/details/json?place_id=$place_id&fields=name,rating,formatted_phone_number,opening_hours,geometry&key=".$api_key;
+
+        $logger->debug($place_url);
+
+        $response = $client->request('GET', $place_url );
+
+        $content = json_decode($response->getContent());
+
+        if (strtolower($content->status) == 'ok') {
+
+            if($content->result){
+                
+                $results = $content->result;
+
+                $geometry = $results->geometry;
+                if($geometry){
+
+                    $geometry  = $geometry->location;
+                    $longitude = $geometry->lng;
+                    $latitude  = $geometry->lat;
+                    
+                    $location->longitude = $longitude;
+                    $location->latitude = $latitude;
+
+                }
+                else {
+                    $logger->error("Geolocation Not Found For Place: ".$name);
+                }
+
+                $opening_hours = $results->opening_hours;
+                if($opening_hours){
+
+                    if(count($opening_hours->weekday_text) == 0){
+                        $logger->error("Opening Hours, Weekdays Info Empty: ".$name);
+                    }
+                    else {
+
+                        $hours = array();
+
+                        foreach($opening_hours->weekday_text as $weekday){
+                            preg_match('/^(\w+)\W+(\d+:\d+ \w*)\W+(\d+:\d+ \w+)/',$weekday,$matches);
+                            
+                            if(!$matches){
+                                // $logger->error('Opening Hours, Weekdays Format Not Recognised: '.$name); 
+                                throw new Exception("$name: Opening Hours, Weekdays Format Not Recognised: $weekday");
+                            }
+
+                            preg_match('/am|pm/i',$matches[2],$format_match1);
+                            preg_match('/am|pm/i',$matches[3],$format_match2);
+
+                            if(!$format_match1){
+                                $logger->error("$name: Opening Hours, No AM/PM Set: ".$matches[2]);
+                                $matches[2] = trim($matches[2]) . ' PM';
+                            }
+
+                            if(!$format_match2){
+                                $logger->error("$name: Opening Hours, No AM/PM Set: ".$matches[3]);
+                                $matches[3] = trim($matches[3]) . ' PM';
+                            }
+
+                            $day = $matches[1];
+                            $open = date("H:i", strtotime($matches[2]));
+                            $close = date("H:i", strtotime($matches[3]));
+
+                            $open_hours = new data();
+                            $open_hours->day = $day;
+                            $open_hours->open = $open;
+                            $open_hours->close = $close;
+
+                            $hours[] = $open_hours;
+                        }
+                        
+                        $restaurant->hours = json_encode($hours);
+                    }
+
+
+                }
+                else {
+                    $logger->error("Opening Hours Not Found For Place: ".$name);
+                }
+
+                $phone_number = $results->formatted_phone_number;
+                if($phone_number){
+                    $restaurant->phone_number = $phone_number;
+                }
+
+            }
+            else {
+                $logger->error("Results Missing: ".$name);
+            }
+
+        }
+        else {
+            $logger->error("Failed To Find Details Of Place Using Place_ID($place_id): ".$name);
+            return false;
+        }
+
+        return true;
+    }
+
 }
 
 ?>
