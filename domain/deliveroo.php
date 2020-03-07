@@ -5,16 +5,15 @@ require_once __DIR__ . '/../services/matching.php';
 use Symfony\Component\DomCrawler\Crawler;
 use Goutte\Client;
 
-class Deliveroo {
+class Deliveroo extends Shared {
     
     public $restaurant;
 
-    function __construct($config,$database,$shared)
+    function __construct($config,$database)
     {
         $this->config      = $config;
         $this->database    = $database;
         $this->development = $config->development;
-        $this->shared      = $shared;
     }
 
     public function download_restaurant($url,$destination){
@@ -32,10 +31,12 @@ class Deliveroo {
 
         $logger->debug("Downloading Restaurant $restaurant_name");
 
-        return $this->shared->download_page($url,$restaurant_file);
+        return $this->download_page($url,$restaurant_file);
     }
 
     public function parse_content($data){
+        global $logger;
+ 
         $json = $data->filter('script[data-component-name="MenuIndexApp"]')->eq(0)->text();
 
         $location = $this->config->directories->debug;
@@ -50,6 +51,7 @@ class Deliveroo {
     }
 
     public function food_categories($menu){
+        global $logger;
 
         $ignore = $this->config->details->ignore;
 
@@ -94,14 +96,26 @@ class Deliveroo {
                     throw new Exception('Unknown Currency: '.$food_data->price_unit);
                 }
                 
-                $food_category->foods[] = $food;
+                if($food->price > 0){
+                    $food_category->foods[] = $food;
+                }
+                else {
+                    $logger->debug('Ignoring Food Costing £0 '.$food->name);
+                }
 
             }
 
         }
 
+        //Removing All Categories Without Foods As No Price For Food
+        foreach($categories_list as $id => $category){
+            if(count($category->foods) == 0){
+                $logger->debug('Deleting Empty Category: '.$category->name);
+                unset( $categories_list[$id] );
+            }
+        }
+
         return array_values($categories_list);
-        // print_r($categories_list);
 
     }
 
@@ -115,9 +129,9 @@ class Deliveroo {
         $location = new data();
 
         $location->city     = $restaurant_data->city;
-        $location->address1 = $restaurant_data->street_address;
+        $location->address1 = preg_replace('/,\s?$/','',$restaurant_data->street_address);
 
-        $location->postcode = $this->shared->format_postcode($restaurant_data->post_code);
+        $location->postcode = $this->format_postcode($restaurant_data->post_code);
         $location->area     = $restaurant_data->neighborhood;
 
         $location->country = $this->config->country;
@@ -138,7 +152,7 @@ class Deliveroo {
 
         $restaurant_data = $content->restaurant;
 
-        $this->restaurant->online_id = "D".$restaurant_data->id;
+        $this->restaurant->online_id = $restaurant_data->id;
 
         //Set Restaurant Cuisine
         $cuisines = array();
@@ -160,25 +174,30 @@ class Deliveroo {
 
         $this->restaurant->logo = "https://f.roocdn.com/images/menus/$menu_id/header-image.jpg?width=100&height=100&auto=webp&format=jpg&fit=crop&v=1559314152";
 
-        $logger->debug($this->restaurant->logo);
+        $logger->debug("Logo: ".$this->restaurant->logo);
 
-        $this->restaurant->name = $restaurant_data->name;
+        $this->restaurant->name = $this->parse_name($restaurant_data->name,$restaurant_data->city);
         $this->restaurant->description = $restaurant_data->description;
         $this->restaurant->phone_number = $restaurant_data->phone_numbers;
+        $this->restaurant->site = 'deliveroo';
 
         //Empty
         $this->restaurant->hours = 'NULL';
         $this->restaurant->hygiene_rating = 'NULL';
 
         $hygiene_url = $content->hygiene_content->link_href;
-        $this->restaurant->hygiene_rating = $this->shared->restaurant_hygiene( $hygiene_url );
+        $this->restaurant->hygiene_rating = $this->restaurant_hygiene( $hygiene_url );
 
         $this->restaurant->overall_rating =$content->rating->value ?? 0;
         $this->restaurant->num_ratings = str_replace('+','',$content->rating->formatted_count ?? 0);
 
-
-
         $this->restaurant->location = $this->location($restaurant_data);
+
+        $this->places($this->restaurant);
+
+        if(!property_exists($this->restaurant, 'name')){
+            throw new Exception('No Restaurant Name Found');
+        }
 
     }
 
@@ -192,18 +211,32 @@ class Deliveroo {
 
         $destination = $this->config->directories->restaurants;
 
-        $duplicate = $this->shared->duplicate_restaurant($url);
+        $duplicate = $this->duplicate_restaurant($url);
         
         if($duplicate){
             return;
         }
 
-        // echo "$url -> $destination\n";
+        $retry = $this->config->retry->count;
+        $wait = $this->config->retry->wait;
 
-        $file = $this->download_restaurant($url,$destination);
-        
-        $data = $this->shared->crawl_page($file);
-        $content = $this->parse_content($data);
+        for($i =0; $i <$retry;$i++ ){
+
+            try {
+
+                $file = $this->download_restaurant($url,$destination);
+                $data = $this->crawl_page($file);
+                $content = $this->parse_content($data);
+                break;
+            }
+            catch (Exception $e) {
+                $message = $e->getMessage();
+                $logger->error($message);
+                $logger->debug('Retrying Restaurant Page Shortly');
+                sleep($wait);
+            }
+        }
+
 
         $this->info($content);
 
@@ -215,6 +248,15 @@ class Deliveroo {
             $logger->debug( sprintf('Halal Restaurant %s (%s)',$this->restaurant->name, $this->restaurant->cuisines));
         }
         
+        $restaurant_exists_cross = $this->cross_search($this->restaurant);
+
+        if($restaurant_exists_cross){
+            $logger->debug('Not Found In JustEat');
+        }
+        else {
+            $logger->debug('Found In JustEat. Skipping');
+            return;
+        }
 
         $this->menu($content);
 
@@ -223,8 +265,8 @@ class Deliveroo {
 
 
         // print_r($this->restaurant->menu);
-        $this->shared->restaurant($this->restaurant);
-        // $this->shared->delete_restaurant('https://deliveroo.co.uk/menu/birmingham/acocks-green/hot-pan-pizza');
+        $this->restaurant($this->restaurant);
+        // $this->delete_restaurant('https://deliveroo.co.uk/menu/birmingham/acocks-green/hot-pan-pizza');
 
         sleep($this->config->waiting_time->restaurant);
 
@@ -238,7 +280,7 @@ class Deliveroo {
     }
 
     public function search($city){
-        global $logger,$city_restaurants;
+        global $logger,$city_restaurants,$area_restaurants;
         //Save and filter through their sitemap
 
         // $this->new_restaurant('https://deliveroo.co.uk/menu/birmingham/birmingham-city-centre/tortilla-birmingham?day=today&geohash=gcqdteq62xv1&time=ASAP');
@@ -256,12 +298,12 @@ class Deliveroo {
 
             $logger->debug('Sitemap Download Start');
 
-            $this->shared->download_page($sitemap_url,$file_location);
+            $this->download_page($sitemap_url,$file_location);
 
             $logger->debug('Sitemap Download Complete');
         }
 
-        $crawler = $this->shared->crawl_page($file_location);
+        $crawler = $this->crawl_page($file_location);
 
         $logger->debug('Crawler Created');
 
@@ -283,21 +325,24 @@ class Deliveroo {
                     $area_restaurants = array();
 
                     $list->children('li a[href]')->each(function(Crawler $node, $i){
-                        global $area_restaurants,$new_area;
+                        global $area_restaurants,$new_area,$logger;
 
                         $href = $node->attr('href');
-                        $name = $node->text();
 
                         preg_match('/^\/restaurants/',$href,$matches);
 
-                        if($matches){
-                            // echo  $name."\n";
-                            $new_area =  $name;
+                        if(!$matches){
+
+                            $url =  "https://deliveroo.co.uk$href";
+
+                            $duplicate = $this->duplicate_restaurant($url);
+        
+                            if(!$duplicate){
+                                // $logger->debug('New Possible Restaurant '.$url);
+                                $area_restaurants[] = $url;
+                            }
                         }
-                        else {
-                            $area_restaurants[$new_area][$name] = "https://deliveroo.co.uk$href";
-                        }
-                        
+
                     });
 
                     $city_restaurants[$city_name] = $area_restaurants;
@@ -310,11 +355,12 @@ class Deliveroo {
 
         });
 
-        // print_r($city_restaurants);
-        // $this->restaurant_list($city_restaurants);
-        return $city_restaurants;
+        // print_r($area_restaurants);
+
+        return $area_restaurants;
 
     }
+
 }
 
 ?>
