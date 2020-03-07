@@ -7,13 +7,13 @@
     require_once __DIR__ . '/../services/strings.php';
     require_once __DIR__ . '/../services/places.php';
     require_once __DIR__ . '/../services/save_image.php';
-    
+    include_once __DIR__ . '/shared.php';
     
     use Symfony\Component\DomCrawler\Crawler;
     use Goutte\Client;
     use \Symfony\Component\HttpClient\HttpClient;
     
-    class justEat
+    class justEat extends Shared
     {
         
         public $restaurant_id;
@@ -483,18 +483,20 @@
                     $restaurant->country = sanitize($config->country);
                     $restaurant->county  = sanitize($config->county);
                 }
+
+                $restaurant->name = $this->parse_name($restaurant->name,$restaurant->city);
                 
-                preg_match('/(.+?)\s-\s[A-Z].+/i', $restaurant->name, $matches1);
-                preg_match('/(^.+?)\s?\(.+\)/i', $restaurant->name, $matches2);
-                preg_match("/^(.+)\\s$restaurant->city/i", $restaurant->name, $matches3);
+                // preg_match('/(.+?)\s-\s[A-Z].+/i', $restaurant->name, $matches1);
+                // preg_match('/(^.+?)\s?\(.+\)/i', $restaurant->name, $matches2);
+                // preg_match("/^(.+)\\s$restaurant->city/i", $restaurant->name, $matches3);
                 
-                if ($matches1) {
-                    $restaurant->name = $matches1[1];
-                } elseif ($matches2) {
-                    $restaurant->name = $matches2[1];
-                } elseif ($matches3) {
-                    $restaurant->name = $matches3[1];
-                }
+                // if ($matches1) {
+                //     $restaurant->name = $matches1[1];
+                // } elseif ($matches2) {
+                //     $restaurant->name = $matches2[1];
+                // } elseif ($matches3) {
+                //     $restaurant->name = $matches3[1];
+                // }
                 
                 $online_id             = $information->trId;
                 $restaurant->online_id = $online_id;
@@ -698,32 +700,64 @@
         }
         
         public function donwload_page($url){
-
+            #Add some error handling, for handling issues with request and being blocked and retrying
             global $logger;
 
             $city = $this->config->city;
             
             $client  = new Client();
-            $crawler = $client->request('GET', $url);
-            $html    = $crawler->html();
-            
+
+            $retry = $this->config->retry->count;
+            $wait = $this->config->retry->wait;
+
+            $download_success = 0;
+
             preg_match('/https:\/\/www\.just-eat\.co\.uk\/(.+)\/menu/', $url, $matches);
-            
+                    
             if (!$matches){
                 throw new Exception("Invalid Menu URL Provided: $url");
             }
 
-            $restaurant_name = $matches[1];
-            $restaurant_file = $this->config->directories->restaurants . "/$restaurant_name.html";
+            for($i =0;$i < $retry;$i++){
 
-            //IF captcha page then wait for a few seconds and try again
-            if(is_nan(stripos($html,'<script src="/_Incapsula_Resource?'))){
-                $logger->error('Captcha Page Found. Trying Again');
+                try {
+
+                    $crawler = $client->request('GET', $url);
+                    $html    = $crawler->html();
+                    
+                    $restaurant_name = $matches[1];
+                    $restaurant_file = $this->config->directories->restaurants . "/$restaurant_name.html";
+        
+                    //IF captcha page then wait for a few seconds and try again
+                    if(is_nan(stripos($html,'<script src="/_Incapsula_Resource?'))){
+                        // $logger->error('Captcha Page Found. Trying Again');
+                        throw new Exception('Captcha Page Found. Trying Again');
+                    }
+        
+                    file_put_contents($restaurant_file, $html);
+        
+                    $logger->debug("Downloading $url -> $restaurant_name.html");
+
+                    $download_success = 1;
+
+                    break;
+
+                }
+                catch (Exception $e){
+                    $message = $e->getMessage();
+                    $logger->error("Restaurant Download Error: $message", [$e->getTrace()] );
+                    $logger->debug('Trying Restaurant Download Again Shortly');
+                    sleep($wait);
+                }
+
             }
 
-            file_put_contents($restaurant_file, $html);
-
-            $logger->debug("Downloading $url -> $restaurant_name.html");
+            if(!$download_success){
+                throw new Exception('Failed To Download Restaurant File');
+            }
+            else {
+                $logger->debug('Restaurant Page Downloaded Successfully');
+            }
 
             return $restaurant_file;
 
@@ -772,6 +806,10 @@
 
                 if ($info->url != $url) {
                     throw new Exception('URL Has Changed Into: ' . $info->url);
+                }
+
+                if($this->cross_search($info)){
+
                 }
 
                 for($i =0;$i < $retry;$i++){
@@ -832,8 +870,9 @@
             $count = count($new_restaurants);
             $logger->notice("All $count New Halal Restaurants Added");
             
+            $destination = $this->config->directories->list;
             $list = json_encode($new_restaurants);
-            file_put_contents("list/$city.json", $list);
+            file_put_contents("$destination/$city.json", $list);
             
         }
         
