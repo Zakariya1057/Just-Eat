@@ -12,7 +12,7 @@
 
     include_once __DIR__ . '/domain/justeat.php';
     include_once __DIR__ . '/domain/deliveroo.php';
-    include_once __DIR__ . '/domain/shared.php';
+
 
     global $logger,$config;
 
@@ -28,7 +28,6 @@
         $shared = new Shared($config,$database);
 
         $target_site = $config->site;
-
         
         $logger->debug('Site: '.$target_site);
 
@@ -38,8 +37,14 @@
 
             if (count($error_restaurant) != 0) {
                 $logger->debug('Failed Restaurant Found');
-                $shared->delete_restaurant($error_restaurant[0]);
-                $logger->debug('Failed Restaurant Deleted: '.$error_restaurant[0]);
+
+                foreach($error_restaurant as $failed_restaurant){
+
+                    $shared->delete_restaurant($failed_restaurant);
+                    $logger->debug('Failed Restaurant Deleted: '.$failed_restaurant);
+
+                }
+
             }
 
             file_put_contents($error_list, '[]');
@@ -65,7 +70,8 @@
 
                 $list = array();
 
-                $postcode_list = __DIR__ . "/list/$city.json";
+                // $postcode_list = __DIR__ . "/list/$city.json";
+                $postcode_list = $config->directories->list;
 
                 if($config->fetch_new){
 
@@ -153,36 +159,84 @@
 
                 create_directories($config,$city);
 
-                $city_list = $deliveroo->search($city);
+                $list_destination = $config->directories->list;
+                
+                $search_new = true;
+                $list_file = "$list_destination/$city.json";
 
-                print_r($city_list);
+                if(file_exists($list_file)){
 
-                foreach(array_keys($city_list) as $city){
+                    $logger->debug("$city List Found");
+                    $new_restaurants = json_decode(file_get_contents($list_file));
 
-                    foreach($city_list[$city] as $area => $restaurants){
-
-                        foreach($restaurants as $name => $url){
-                            // echo "$restaurant_name($restaurant_url)\n";
-                            $current_restaurant = $url;
-
-                            preg_match('/\/([^\/]+)$/',$url,$matches);
-                            if(!$matches){
-                                throw new Exception('Invalid Restaurant URL');
-                            }
-                            else {
-                                $name = ucwords(str_replace('-',' ',$matches[1]));
-                            }
-
-                            $logger->notice("------------ $name Restaurant Start ------------");
-
-                            $deliveroo->new_restaurant($url);
-
-                            $logger->notice("------------ $name Restaurant Complete ------------");
-                        }
-
+                    $restaurant_count = count($new_restaurants);
+                    if ( $restaurant_count != 0) {
+                        $search_new = false;
+                        $logger->debug("$restaurant_count Restaurants Left");
+                    } else {
+                        $logger->debug("$city List Empty");
                     }
 
                 }
+                
+                if($search_new) {
+                    $logger->debug("$city List Not Found");
+                    $new_restaurants = $deliveroo->search($city);
+                    $deliveroo->generate_list($new_restaurants);
+                }
+                
+
+                foreach($new_restaurants as $url){
+                    // echo "$restaurant_name($restaurant_url)\n";
+                    $current_restaurant = $url;
+
+                    preg_match('/\/([^\/]+)$/',$url,$matches);
+                    if(!$matches){
+                        throw new Exception('Invalid Restaurant URL');
+                    }
+                    else {
+                        $name = ucwords(str_replace('-',' ',$matches[1]));
+                    }
+
+                    $logger->notice("------------ $name Restaurant Start ------------");
+
+                    $deliveroo->new_restaurant($url);
+
+                    array_shift($new_restaurants);
+
+                    file_put_contents($list_file, json_encode($new_restaurants));
+
+                    $logger->notice("------------ $name Restaurant Complete ------------");
+                }
+
+                // print_r($city_list);
+
+                // foreach(array_keys($city_list) as $city){
+
+                //     foreach($city_list[$city] as $area => $restaurants){
+
+                //         foreach($restaurants as $name => $url){
+                //             // echo "$restaurant_name($restaurant_url)\n";
+                //             $current_restaurant = $url;
+
+                //             preg_match('/\/([^\/]+)$/',$url,$matches);
+                //             if(!$matches){
+                //                 throw new Exception('Invalid Restaurant URL');
+                //             }
+                //             else {
+                //                 $name = ucwords(str_replace('-',' ',$matches[1]));
+                //             }
+
+                //             $logger->notice("------------ $name Restaurant Start ------------");
+
+                //             $deliveroo->new_restaurant($url);
+
+                //             $logger->notice("------------ $name Restaurant Complete ------------");
+                //         }
+
+                //     }
+
+                // }
 
 
                 $logger->notice('Deliveroo Scraping Complete');
@@ -218,7 +272,8 @@
         // print_r($e->getTrace());
 
         // $logger->critical("Script Failure: $message");
-        $logger->debug("Script Failure: $message", [$e->getTrace()]);
+        // $logger->debug("Script Failure: $message", []);
+        file_put_contents('error_stack.json',json_encode( $e->getTrace() ));
 
         send_email("ERROR: $message");
     }
