@@ -22,6 +22,9 @@
         $logs_directory = __DIR__ . "/../logs/$site";
         new_directory($logs_directory);
 
+        $list_directory = __DIR__ . "/../list/$site";
+        new_directory($list_directory);
+
         $site_directory = __DIR__ . "/../resources/$site";
         new_directory($site_directory);
 
@@ -55,6 +58,7 @@
         $directories->hygiene = $hygiene_directory;
         $directories->sitemap = $sitemap_directory;
         $directories->debug = $debug_directory;
+        $directories->list = $list_directory;
         
         $config->directories = $directories;
         $config->list_file =  __DIR__ . "/../list/$city.json";
