@@ -1,5 +1,10 @@
 resources/*
+archive
+
+config
+
 !resources/.gitkeep
+!archive/.gitkeep
 
 logs/*
 !logs/.gitkeep
