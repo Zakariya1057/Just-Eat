@@ -3,6 +3,8 @@ archive
 !resources/.gitkeep
 !archive/.gitkeep
 logs/*
+*.log
+*.json
 !logs/.gitkeep
 list/*
 !list/.gitkeep
@@ -10,4 +12,5 @@ failed/*
 !failed/.gitkeep
 vendor
 dev/*/
-config/
+config/config.php
+.vscode/
