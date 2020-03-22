@@ -193,8 +193,6 @@ class Deliveroo extends Shared {
 
         $this->restaurant->location = $this->location($restaurant_data);
 
-        $this->places($this->restaurant);
-
         if(!property_exists($this->restaurant, 'name')){
             throw new Exception('No Restaurant Name Found');
         }
@@ -258,15 +256,11 @@ class Deliveroo extends Shared {
             return;
         }
 
+        $this->places($this->restaurant);
+
         $this->menu($content);
 
-        // $file = '/media/zack/TOSHIBA EXT/justeat/services/../resources/deliveroo/Birmingham/restaurants/hot-pan-pizza.html';
-
-
-
-        // print_r($this->restaurant->menu);
         $this->restaurant($this->restaurant);
-        // $this->delete_restaurant('https://deliveroo.co.uk/menu/birmingham/acocks-green/hot-pan-pizza');
 
         sleep($this->config->waiting_time->restaurant);
 
