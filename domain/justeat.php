@@ -421,8 +421,10 @@
             $config = $this->config;
             
             $information = null;
+
             $restaurant = new data();
-            
+            $location = new data();
+
             $crawler = new Crawler(file_get_contents($filename));
             
             $restaurant->file = $filename;
@@ -473,30 +475,18 @@
 
 
                 if ($information->address) {
-                    $restaurant->address1        = sanitize($information->address->streetAddress);
-                    $restaurant->address2        = '';
-                    $restaurant->address3        = '';
-                    $restaurant->city            = sanitize($information->address->addressLocality);
-                    $restaurant->address_country = sanitize($information->address->addressCountry);
-                    $restaurant->postcode        = sanitize($information->address->postalCode);
+                    $location->address1        = sanitize($information->address->streetAddress);
+                    $location->address2        = '';
+                    $location->address3        = '';
+                    $location->city            = sanitize($information->address->addressLocality);
+                    $location->address_country = sanitize($information->address->addressCountry);
+                    $location->postcode        = sanitize($information->address->postalCode);
                     
-                    $restaurant->country = sanitize($config->country);
-                    $restaurant->county  = sanitize($config->county);
+                    $location->country = sanitize($config->country);
+                    $location->county  = sanitize($config->county);
                 }
 
-                $restaurant->name = $this->parse_name($restaurant->name,$restaurant->city);
-                
-                // preg_match('/(.+?)\s-\s[A-Z].+/i', $restaurant->name, $matches1);
-                // preg_match('/(^.+?)\s?\(.+\)/i', $restaurant->name, $matches2);
-                // preg_match("/^(.+)\\s$restaurant->city/i", $restaurant->name, $matches3);
-                
-                // if ($matches1) {
-                //     $restaurant->name = $matches1[1];
-                // } elseif ($matches2) {
-                //     $restaurant->name = $matches2[1];
-                // } elseif ($matches3) {
-                //     $restaurant->name = $matches3[1];
-                // }
+                $restaurant->name = $this->parse_name($restaurant->name,$location->city);
                 
                 $online_id             = $information->trId;
                 $restaurant->online_id = $online_id;
@@ -534,7 +524,9 @@
                 
                 $restaurant->hygiene_rating = $hygiene_rating;
                 
-                $restaurant->location   = $information->geo;
+                $location->longitude   = $information->geo->longitude;
+                $location->latitude   = $information->geo->latitude;
+
                 $restaurant->categories = str_replace('|', ', ', $information->cuisines);
                 
                 $opening_hours = array();
@@ -549,7 +541,7 @@
                     'Sunday'
                 );
                 
-                // print_r($information->openingHours);
+
                 for ($i = 0; $i < count($information->openingHours); $i++) {
                     
                     $weekday = str_replace('"', '', $information->openingHours[$i]);
@@ -561,7 +553,6 @@
                     }
                     
                     $day = $days[$i];
-                    // return $matches;
                     
                     if (count($matches) > 2) {
                         $open  = $matches[2];
@@ -586,6 +577,7 @@
                 return false;
             }
             
+            $restaurant->location = $location;
             return $restaurant;
             
         }
@@ -649,22 +641,24 @@
             $categories     = $restaurant->categories;
             $online_id      = $restaurant->online_id;
             $hygiene_rating = $restaurant->hygiene_rating;
+
+            $location = $restaurant->location;
             
-            $address1 = $restaurant->address1;
-            $address2 = $restaurant->address2;
-            $address3 = $restaurant->address3;
-            $postcode = $restaurant->postcode;
-            $county   = $restaurant->county;
-            $country  = $restaurant->country;
+            $address1 = $location->address1;
+            $address2 = $location->address2;
+            $address3 = $location->address3;
+            $postcode = $location->postcode;
+            $county   = $location->county;
+            $country  = $location->country;
             $url      = $restaurant->url;
             
-            $longitude = $restaurant->location->longitude;
-            $latitude  = $restaurant->location->latitude;
+            $longitude = $location->longitude;
+            $latitude  = $location->latitude;
 
             $rating = $restaurant->rating;
             $num_ratings = $restaurant->num_ratings;
             
-            $city = $restaurant->city;
+            $city = $location->city;
             
             $logo = "https://d30v2pzvrfyzpo.cloudfront.net/uk/images/restaurants/$online_id.gif";
             
@@ -771,7 +765,6 @@
             
             $logger->debug("Restaurant URL: $url");
             $config = $this->config;
-            $city   = $config->city;
             
             if ($this->exists($url)) {
                 return $logger->warning('Skipping Restaurant, Already Exists In Database', array(
@@ -808,8 +801,14 @@
                     throw new Exception('URL Has Changed Into: ' . $info->url);
                 }
 
-                if($this->cross_search($info)){
+                $restaurant_exists_cross = $this->cross_search($info);
 
+                if($restaurant_exists_cross){
+                    $logger->debug($info->url.' Not Found In Deliveroo');
+                }
+                else {
+                    $logger->debug($info->url.' Found In Deliveroo. Skipping');
+                    return;
                 }
 
                 for($i =0;$i < $retry;$i++){
@@ -954,7 +953,7 @@
 
             //Fetch Restaurant That haven't been updated in a week.
             // $results  = $database->database_query("SELECT * FROM restaurant where url like 'https://www.just-eat.co.uk/%' and updated < ( NOW() - INTERVAL 7 DAY )");
-            $results  = $database->database_query("SELECT * FROM restaurant where updated is null;");
+            $results  = $database->database_query("SELECT * FROM restaurant where updated is null and site='justeat';");
             
             $restaurant_count = $results->num_rows;
 
