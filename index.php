@@ -71,7 +71,7 @@
                 $list = array();
 
                 // $postcode_list = __DIR__ . "/list/$city.json";
-                $postcode_list = $config->directories->list;
+                $postcode_list = $config->directories->list."/$city.json";
 
                 if($config->fetch_new){
 
@@ -80,13 +80,13 @@
                     $search_new = true;
 
                     if (file_exists($postcode_list)) {
-                        $logger->debug("$city List Found");
-                        $new_restaurants = json_decode(file_get_contents($postcode_list));
+                        $logger->debug("$postcode_list List Found");
+                        $new_restaurants = json_decode(file_get_contents($postcode_list)) ?? [];
 
                         if (count($new_restaurants) != 0) {
                             $search_new = false;
                         } else {
-                            $logger->debug("$city List Empty");
+                            $logger->debug("$postcode_list Restaurant List Empty");
                         }
                     }
 
@@ -134,6 +134,7 @@
                 }
 
                 if($config->update_old){
+                    $current_restaurant = null;
                     $logger->debug('Updating Old Restaurants');
                     $justeat->update_restaurants();
                 }
