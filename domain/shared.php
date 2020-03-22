@@ -144,7 +144,7 @@ class Shared {
 
         $user_id        = $config->user_id;
         $name           = sanitize($restaurant->name);
-        $hours          = sanitize($restaurant->hours);
+        $hours          = $restaurant->hours;
         $cuisines       = sanitize($restaurant->cuisines);
         $online_id      = sanitize($restaurant->online_id);
         $hygiene_rating = sanitize($restaurant->hygiene_rating);
@@ -253,13 +253,14 @@ class Shared {
                 
             } else {
                 //Failed on category,Delete last one
-                $database->database_query("delete ignore from category order by id desc limit 1");
+                $database->database_query("DELETE ignore FROM category ORDER by id desc limit 1");
                 $database->database_query("ALTER TABLE category AUTO_INCREMENT = 1");
             }
             
             
             //Failed to inserting location, no food or categories present
             $database->database_query("DELETE FROM restaurant where id='$restaurant_id'");
+            $database->database_query("DELETE ignore FROM opening_hour where restaurant_id='$restaurant_id'");
             $database->database_query("ALTER TABLE restaurant AUTO_INCREMENT = 1");
             
         }
@@ -323,7 +324,8 @@ class Shared {
         }
         else {
             $logger->warning('No Restaurant Matched. Trying Postcode Search With Similar Names');
-            $results = $this->database->database_query("SELECT * FROM restaurant inner join location on location.restaurant_id = restaurant.id where (name like '$possible_name%' and location.address_line1 like '%$short_address%' ) or ( location.address_line1='$address1' or REPLACE(location.postcode,' ','') ='$postcode' )");
+            $results = $this->database->database_query("SELECT * FROM restaurant inner join location on location.restaurant_id = restaurant.id where ( (name like '$possible_name%' and location.address_line1 like '%$short_address%' and REPLACE(location.postcode,' ','') ='$postcode' ) or ( location.address_line1='$address1' or REPLACE(location.postcode,' ','') ='$postcode' ) )");
+
             $filter_results = true;
         }
 
@@ -338,16 +340,28 @@ class Shared {
                 $result_name = $row['name'];
 
                 similar_text($row['name'], $name, $similarity);
-                similar_text($row['name'], $possible_name, $similarity1);
+                similar_text($row['address_line1'], $address1, $address_similarity);
 
-                $logger->debug($row['name'] ." === ". $name . " Or ".$possible_name);
+                preg_match('/^(\d+)/',$row['address_line1'],$street_number1);
+                preg_match('/^(\d+)/',$address1,$street_number2);
 
-                preg_match("/$possible_name/i",$result_name, $matches);
+                if(!$street_number1 || !$street_number2){
+                    // throw new Exception('Street Number Missing: '. $row['address_line1'] . ' | '.$address1);
+                    $logger->error('Street Number Missing: '. $row['address_line1'] . ' | '.$address1);
+                }
 
-                preg_match("/".$row['address_line1']."/i",$address1, $address_matches1);
-                preg_match("/$address1/i",$row['address_line1'], $address_matches2);
+                $logger->debug("--- ".$row['name'] ."  ===  $name ---");
 
-                if($similarity > 60 || $similarity1 > 60 || $matches || ( ($address_matches || $address_matches2) && str_replace(' ','',$row['postcode']) == str_replace(' ','',$postcode) )){
+                preg_match("/$name/i",$result_name, $name_match1);
+
+                preg_match("/".$row['address_line1']."/i",$address1, $address_search1);
+                preg_match("/$address1/i",$row['address_line1'], $address_search2);
+
+                $logger->debug('Content: '.$row['address_line1']."\t Search $address1");
+                $logger->debug('Content: '.$address1."\t Search: ".$row['address_line1']);
+
+                if( ( $similarity > 60 || $name_match1 ) || ( ($street_number1 && $street_number2) && $address_similarity > 60 && ( $street_number1[1] == $street_number2[1]) ) || ( ($address_search1 || $address_search2) && str_replace(' ','',$row['postcode']) == str_replace(' ','',$postcode) )){
+
                     $logger->debug('Single Restaurant Match Found In Database. '.$row['name'] .' == '. $name);
                     $restaurant_found = true;
                     break;
@@ -364,7 +378,7 @@ class Shared {
             $logger->debug("$name New");
         }
         
-        return $restaurant_found;
+        return !$restaurant_found;
 
     }
 
@@ -477,7 +491,7 @@ class Shared {
         $api_key = $config->google->api_key;
 
         //Get Place Id and use that to get details
-        $format_address = str_replace(' ','+',"$name,$address,$postcode,$city");
+        $format_address = str_replace(' ','+',"$address,$postcode,$city,$name");
         
         $search_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=$format_address&inputtype=textquery&key=".$api_key;
         $logger->debug('Search URL: '.$search_url);
@@ -528,8 +542,10 @@ class Shared {
                     $logger->error("Geolocation Not Found For Place: ".$name);
                 }
 
-                $opening_hours = $results->opening_hours;
-                if($opening_hours){
+
+                if(property_exists($results,'opening_hours')){
+                    
+                    $opening_hours = $results->opening_hours;
 
                     if(count($opening_hours->weekday_text) == 0){
                         $logger->error("Opening Hours, Weekdays Info Empty: ".$name);
@@ -539,34 +555,67 @@ class Shared {
                         $hours = array();
 
                         foreach($opening_hours->weekday_text as $weekday){
-                            preg_match('/^(\w+)\W+(\d+:\d+ \w*)\W+(\d+:\d+ \w+)/',$weekday,$matches);
-                            
-                            if(!$matches){
-                                // $logger->error('Opening Hours, Weekdays Format Not Recognised: '.$name); 
-                                throw new Exception("$name: Opening Hours, Weekdays Format Not Recognised: $weekday");
-                            }
 
-                            preg_match('/am|pm/i',$matches[2],$format_match1);
-                            preg_match('/am|pm/i',$matches[3],$format_match2);
-
-                            if(!$format_match1){
-                                $logger->error("$name: Opening Hours, No AM/PM Set: ".$matches[2]);
-                                $matches[2] = trim($matches[2]) . ' PM';
-                            }
-
-                            if(!$format_match2){
-                                $logger->error("$name: Opening Hours, No AM/PM Set: ".$matches[3]);
-                                $matches[3] = trim($matches[3]) . ' PM';
-                            }
-
-                            $day = $matches[1];
-                            $open = date("H:i", strtotime($matches[2]));
-                            $close = date("H:i", strtotime($matches[3]));
+                            preg_match('/closed/i',$weekday,$closed_match);
+                            preg_match('/Open 24 hours/i',$weekday,$always_open_match);
 
                             $open_hours = new data();
-                            $open_hours->day = $day;
-                            $open_hours->open = $open;
-                            $open_hours->close = $close;
+                            
+                            if($always_open_match){
+                                preg_match('/^(\w+)\:/',$weekday,$name_match);
+
+                                if(!$name_match){
+                                    throw new Exception("$name: No WeekDay Found. Format Not Recognised: $weekday");
+                                }
+
+                                $open_hours->day = $name_match[1];
+                                $open_hours->open = "00:00";
+                                $open_hours->close = "00:01";
+                            }
+                            elseif($closed_match){
+                                preg_match('/^(\w+)\:/',$weekday,$name_match);
+
+                                if(!$name_match){
+                                    throw new Exception("$name: No WeekDay Found. Format Not Recognised: $weekday");
+                                }
+
+                                $open_hours->day = $name_match[1];
+                                $open_hours->open = "";
+                                $open_hours->close = "";
+                            }
+                            else {
+
+                                preg_match('/^(\w+)\W+(\d+:\d+ \w*)\W+(\d+:\d+ \w+)/',$weekday,$matches);
+                            
+                                if(!$matches){
+                                    // $logger->error('Opening Hours, Weekdays Format Not Recognised: '.$name); 
+                                    throw new Exception("$name: Opening Hours, Weekdays Format Not Recognised: $weekday");
+                                }
+    
+                                preg_match('/am|pm/i',$matches[2],$format_match1);
+                                preg_match('/am|pm/i',$matches[3],$format_match2);
+    
+                                if(!$format_match1){
+                                    $logger->error("$name: Opening Hours, No AM/PM Set: ".$matches[2]);
+                                    $matches[2] = trim($matches[2]) . ' PM';
+                                }
+    
+                                if(!$format_match2){
+                                    $logger->error("$name: Opening Hours, No AM/PM Set: ".$matches[3]);
+                                    $matches[3] = trim($matches[3]) . ' PM';
+                                }
+    
+                                $day = $matches[1];
+                                $open = date("H:i", strtotime($matches[2]));
+                                $close = date("H:i", strtotime($matches[3]));
+    
+                                
+                                $open_hours->day = $day;
+                                $open_hours->open = $open;
+                                $open_hours->close = $close;
+                                
+                            }
+
 
                             $hours[] = $open_hours;
                         }
@@ -580,9 +629,8 @@ class Shared {
                     $logger->error("Opening Hours Not Found For Place: ".$name);
                 }
 
-                $phone_number = $results->formatted_phone_number;
-                if($phone_number){
-                    $restaurant->phone_number = $phone_number;
+                if(property_exists($results,'formatted_phone_number')){
+                    $restaurant->phone_number = $results->formatted_phone_number;
                 }
 
             }
