@@ -541,7 +541,6 @@
                     'Sunday'
                 );
                 
-
                 for ($i = 0; $i < count($information->openingHours); $i++) {
                     
                     $weekday = str_replace('"', '', $information->openingHours[$i]);
